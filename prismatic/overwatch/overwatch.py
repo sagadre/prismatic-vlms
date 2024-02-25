@@ -3,6 +3,7 @@ overwatch.py
 
 Utility class for creating a centralized/standardized logger (built on Rich) and accelerate handler.
 """
+
 import logging
 import logging.config
 import os

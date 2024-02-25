@@ -3,6 +3,7 @@ dinosiglip_vit.py
 
 Vision backbone that returns concatenated features from both DINOv2 and SigLIP.
 """
+
 from dataclasses import dataclass
 from functools import partial
 from typing import Callable, Dict, Tuple
@@ -75,10 +76,10 @@ class DinoSigLIPViTBackbone(VisionBackbone):
 
         # Fix =>> SigLIP default transform resizes to *larger* than `self.default_image_size` (crops image)!!
         assert isinstance(default_siglip_transform, Compose), "Unexpected `default_image_transform`!"
-        assert isinstance(sl_resize_transform := default_siglip_transform.transforms[0], Resize)
+        assert isinstance(default_siglip_transform.transforms[0], Resize)
         default_siglip_transform = Compose(
             [
-                Resize(self.default_image_size, interpolation=sl_resize_transform.interpolation),
+                Resize(self.default_image_size, interpolation=default_siglip_transform.transforms[0].interpolation),
                 *default_siglip_transform.transforms[1:],
             ]
         )
@@ -86,19 +87,19 @@ class DinoSigLIPViTBackbone(VisionBackbone):
         if self.image_resize_strategy == "resize-naive":
             assert isinstance(default_dino_transform, Compose), "Unexpected `default_dino_image_transform`!"
             assert isinstance(default_siglip_transform, Compose), "Unexpected `default_siglip_image_transform`!"
-            assert isinstance(dino_resize_transform := default_dino_transform.transforms[0], Resize)
-            assert isinstance(siglip_resize_transform := default_siglip_transform.transforms[0], Resize)
+            assert isinstance(default_dino_transform.transforms[0], Resize)
+            assert isinstance(default_siglip_transform.transforms[0], Resize)
 
             target_size = (self.default_image_size, self.default_image_size)
             dino_transform = Compose(
                 [
-                    Resize(target_size, interpolation=dino_resize_transform.interpolation),
+                    Resize(target_size, interpolation=default_dino_transform.transforms[0].interpolation),
                     *default_dino_transform.transforms[1:],
                 ]
             )
             siglip_transform = Compose(
                 [
-                    Resize(target_size, interpolation=siglip_resize_transform.interpolation),
+                    Resize(target_size, interpolation=default_siglip_transform.transforms[0].interpolation),
                     *default_siglip_transform.transforms[1:],
                 ]
             )

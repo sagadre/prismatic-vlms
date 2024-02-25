@@ -4,6 +4,7 @@ load.py
 Entry point for loading pretrained VLMs for inference; exposes functions for listing available models (with canonical
 IDs, mappings to paper experiments, and short descriptions), as well as for loading models (from disk or HF Hub).
 """
+
 import json
 import os
 from pathlib import Path
@@ -52,8 +53,9 @@ def load(
         overwatch.info(f"Loading from local path `{(run_dir := Path(model_id_or_path))}`")
 
         # Get paths for `config.json` and pretrained checkpoint
-        assert (config_json := run_dir / "config.json").exists(), f"Missing `config.json` for `{run_dir = }`"
-        assert (checkpoint_pt := run_dir / "checkpoints" / "latest-checkpoint.pt").exists(), "Missing checkpoint!"
+        config_json, checkpoint_pt = run_dir / "config.json", run_dir / "checkpoints" / "latest-checkpoint.pt"
+        assert config_json.exists(), f"Missing `config.json` for `{run_dir = }`"
+        assert checkpoint_pt.exists(), f"Missing checkpoint for `{run_dir = }`"
     else:
         if model_id_or_path not in GLOBAL_REGISTRY:
             raise ValueError(f"Couldn't find `{model_id_or_path = }; check `prismatic.available_model_names()`")
