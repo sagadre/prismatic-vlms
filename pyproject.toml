@@ -52,6 +52,10 @@ dev = [
     "pre-commit",
     "ruff>=0.2.2",
 ]
+sagemaker = [
+    "boto3",
+    "sagemaker"
+]
 
 [project.urls]
 homepage = "https://github.com/TRI-ML/prismatic-vlms"
