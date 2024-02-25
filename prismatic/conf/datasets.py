@@ -8,6 +8,7 @@ and processing scheme. A given dataset variant (e.g., `llava-lightning`) configu
     - Finetune Stage Dataset Components (annotations, images)
     - Dataset Root Directory (Path)
 """
+
 from dataclasses import dataclass
 from enum import Enum, unique
 from pathlib import Path
@@ -42,7 +43,7 @@ class LLaVa_V15_Config(DatasetConfig):
         Path("download/llava-v1.5-instruct/llava_v1_5_mix665k.json"),
         Path("download/llava-v1.5-instruct/"),
     )
-    dataset_root_dir: Path = Path("data")
+    dataset_root_dir: Path = Path("/mnt/fsx/skaramcheti/datasets/prismatic-vlms")
 
 
 # [Multimodal-Only] LLava-v15 WITHOUT the Language-Only ShareGPT Data (No Co-Training)

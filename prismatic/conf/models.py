@@ -8,6 +8,7 @@ variant thereof. A given model variant configures the following attributes:
     - [Optional] Stage 1 (`align`) Optimization Hyperparameters
     - Stage 2 (`finetune`) Optimization Hyperparameters
 """
+
 from dataclasses import dataclass
 from enum import Enum, unique
 from typing import Optional
