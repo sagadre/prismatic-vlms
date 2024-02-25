@@ -11,6 +11,7 @@ the AutoModelForCausalLM API (though we may add Seq2Seq models in the future).
 We make this assumption to keep the LLM handling in this codebase relatively lightweight, and to inherit all the nice HF
 utilities around different types of decoding/generation strategies.
 """
+
 import warnings
 from abc import ABC, abstractmethod
 from functools import partial

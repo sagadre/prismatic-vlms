@@ -4,7 +4,6 @@ registry.py
 Exhaustive list of pretrained VLMs (with full descriptions / links to corresponding names and sections of paper).
 """
 
-
 # === Pretrained Model Registry ===
 # fmt: off
 MODEL_REGISTRY = {

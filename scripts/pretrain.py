@@ -20,6 +20,7 @@ Run with:
     - [Single Node Multi-GPU (= $K)]: torchrun --standalone --nnodes 1 --nproc-per-node $K scripts/pretrain.py
     - [Multi-Node/AWS Sagemaker] Depends on your individual setup; file an issue if you have trouble!
 """
+
 import json
 import os
 from dataclasses import dataclass, field
@@ -75,10 +76,8 @@ class PretrainConfig:
 
     # Tracking Parameters
     trackers: Tuple[str, ...] = ("jsonl", "wandb")                  # Trackers to initialize (if W&B, add config!)
-    # wandb_project: str = "prismatic"                                # Name of W&B project (default: `prismatic`)
-    # wandb_entity: Optional[str] = None                              # Name of W&B entity (default: None)
-    wandb_project: str = "onyx-vlms"
-    wandb_entity: str = "stanford-voltron"
+    wandb_project: str = "onyx-vlms"                                # Name of W&B project (default: `prismatic`)
+    wandb_entity: Optional[str] = "stanford-voltron"                # Name of W&B entity (default: None)
 
     def __post_init__(self) -> None:
         """Set optimization parameters based on `stage` in {"align", "finetune"}."""
