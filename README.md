@@ -1,3 +1,54 @@
+### 🚨 Note for TRI Collaborators
+
+**Internal development repository for [https://github.com/TRI-ML/prismatic-vlms](https://github.com/TRI-ML/prismatic-vlms).**
+
+To facilitate a clean workflow with open-source/public code, this internal repository adopts the following structure:
+
+- **[Default]** `vlm-core` - Treat this as the `main` branch for developing new VLM-related changes; always PR to this
+  branch in lieu of `main`.
+- `vla-core` - This is the central branch for developing on vision-language-action models; this is synced with external
+  collaborators. If working on the OpenVLA project, always PR to this branch!
+- `main` - Treat this as a **locked branch**; it tracks the latest stable code in the open-source repository.
+
+**Important:** Assume that all commits/features developed for `vlm-core` will be eventually merged into the upstream
+open-source Prismatic VLMs repository (so keep things clean and informative). If working on a separate feature (e.g.,
+for a different project/internal hacking), operate off a separate branch.
+
+#### [TRI] Setup Instructions
+
+Fork this repository to your personal TRI account (e.g., `siddk-tri/prismatic-dev`). This will automatically set
+`vlm-core` as your main working branch. Set up your remotes to track this repository `TRI-ML/prismatic-dev`:
+
+```bash
+# This should indicate that `origin` is set to your local fork (e.g., `siddk-tri/prismatic-dev.git`)
+git remote -v
+
+# Add `TRI-ML/prismatic-dev.git` as a separate remote (conventionally `upstream`; I prefer `tri-origin`)
+git remote add tri-origin https://github.com/TRI-ML/prismatic-dev.git
+
+# [Periodically] Sync any upstream changes to your local branch
+git pull tri-origin vlm-core
+```
+
+Cut a new (local) feature branch for anything you want to add to the Prismatic VLM codebase:
+
+```bash
+# Create a new (local) feature branch after syncing `vlm-core`
+git switch -c <feature-branch-name>
+
+# Do work... commit frequently...
+git add <changed files> 
+git commit -m "<informative and clean commit message>"
+
+# Push to *local* fork (`origin`)
+git push -u origin <feature-branch-name> 
+```
+
+When ready, initiate PR to `TRI-ML/prismatic-dev@vlm-core`. The maintainers (Sidd/Suraj/Ashwin) will review and provide 
+instructions for merging/pushing to the open-source repository (if applicable).
+
+---
+
 # Prismatic VLMs
 
 [![arXiv](https://img.shields.io/badge/arXiv-2402.07865-df2a2a.svg?style=for-the-badge)](https://arxiv.org/abs/2402.07865)
