@@ -81,9 +81,9 @@ class FSDPStrategy(TrainingStrategy):
 
         # FSDP-Specific Parameters
         if sharding_strategy == "shard-grad-op":
-            self.fsdp_sharding_strategy = ShardingStrategy.SHARD_GRAD_OP
+            self.fsdp_sharding_strategy = ShardingStrategy._HYBRID_SHARD_ZERO2
         elif sharding_strategy == "full-shard":
-            self.fsdp_sharding_strategy = ShardingStrategy.FULL_SHARD
+            self.fsdp_sharding_strategy = ShardingStrategy.HYBRID_SHARD
         else:
             raise ValueError(f"FSDP Sharding Strategy {sharding_strategy} is not supported!")
 
