@@ -10,6 +10,7 @@ We use Abstract base classes *sparingly* -- mostly as a way to encapsulate any r
 (e.g., dependence on nn.Module, HF PretrainedModel, etc.). For other abstract objects (e.g., Tokenizers/Transforms),
 prefer Protocol definitions instead.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -47,6 +48,9 @@ class VLM(nn.Module, GenerationMixin, ABC):
         # === GenerationMixin Expected Attributes =>> *DO NOT MODIFY* ===
         self.generation_config = self.llm_backbone.llm.generation_config
         self.main_input_name = "input_ids"
+
+        # variable specifying if tokenizer uses <BOS> token
+        self.bos_exists = self.llm_backbone.bos_exists
 
     @property
     def device(self) -> torch.device:

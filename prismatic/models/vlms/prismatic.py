@@ -8,6 +8,7 @@ Notes:
       of the {Model}ForCausalLM API that enables dispatch to the underlying LLM's `generate` utilities (feeding inputs
       through our custom projection shim).
 """
+
 from __future__ import annotations
 
 from functools import partial
@@ -326,24 +327,43 @@ class PrismaticVLM(VLM):
         input_embeddings = self.llm_backbone.embed_input_ids(input_ids)
 
         # Build Multimodal Embeddings (and build resulting attention mask)
-        multimodal_embeddings = torch.cat(
-            [
-                input_embeddings[multimodal_indices, :1, :],
-                projected_patch_embeddings,
-                input_embeddings[multimodal_indices, 1:, :],
-            ],
-            dim=1,
-        )
-        multimodal_attention_mask = None
-        if attention_mask is not None:
-            multimodal_attention_mask = torch.cat(
+        multimodal_embeddings = None
+        if self.bos_exists:
+            multimodal_embeddings = torch.cat(
                 [
-                    attention_mask[multimodal_indices, :1],
-                    projected_patch_attention_mask,
-                    attention_mask[multimodal_indices, 1:],
+                    input_embeddings[multimodal_indices, :1, :],
+                    projected_patch_embeddings,
+                    input_embeddings[multimodal_indices, 1:, :],
                 ],
                 dim=1,
             )
+        else:
+            multimodal_embeddings = torch.cat(
+                [
+                    projected_patch_embeddings,
+                    input_embeddings[multimodal_indices, :, :],
+                ],
+                dim=1,
+            )
+        multimodal_attention_mask = None
+        if attention_mask is not None:
+            if self.bos_exists:
+                multimodal_attention_mask = torch.cat(
+                    [
+                        attention_mask[multimodal_indices, :1],
+                        projected_patch_attention_mask,
+                        attention_mask[multimodal_indices, 1:],
+                    ],
+                    dim=1,
+                )
+            else:
+                multimodal_attention_mask = torch.cat(
+                    [
+                        projected_patch_attention_mask,
+                        attention_mask[multimodal_indices, :],
+                    ],
+                    dim=1,
+                )
 
         # [Contract] We assume the first token of `labels` (associated with <BOS>) is already marked as "IGNORE"
         #   => We'll ignore the per-token outputs for each of the patch embeddings as well!
@@ -355,9 +375,13 @@ class PrismaticVLM(VLM):
                 dtype=labels.dtype,
                 device=labels.device,
             )
-            multimodal_labels = torch.cat(
-                [labels[multimodal_indices, :1], projected_patch_labels, labels[multimodal_indices, 1:]], dim=1
-            )
+
+            if self.bos_exists:
+                multimodal_labels = torch.cat(
+                    [labels[multimodal_indices, :1], projected_patch_labels, labels[multimodal_indices, 1:]], dim=1
+                )
+            else:
+                multimodal_labels = torch.cat([projected_patch_labels, labels[multimodal_indices, :]], dim=1)
 
         # === Add Unimodal Handling ===
 

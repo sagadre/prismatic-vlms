@@ -1,101 +1,58 @@
 """
-base_llm.py
+llama2.py
 
-Abstract class definition of a large (autoregressive) language model backbone (LLM), with full annotations of class
-methods, utility functions, and initialization logic.
-
-We also define the generic HFLLMBackbone class here, providing a default interface for loading any HF
-AutoModelForCausalLM (e.g., LLamaForCausalLM). In general, we make the assumption that any given LLM backbone implements
-the AutoModelForCausalLM API (though we may add Seq2Seq models in the future).
-
-We make this assumption to keep the LLM handling in this codebase relatively lightweight, and to inherit all the nice HF
-utilities around different types of decoding/generation strategies.
+Class definition for all LLMs derived from LlamaForCausalLM.
 """
 
-import warnings
-from abc import ABC, abstractmethod
-from functools import partial
-from typing import Callable, List, Optional, Type
+from typing import Optional, Type
 
 import torch
-import torch.nn as nn
-from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
-from transformers import AutoConfig, AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
-from transformers.modeling_outputs import CausalLMOutputWithPast
+from torch import nn as nn
+from transformers import LlamaForCausalLM
+from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
-from prismatic.models.backbones.llm.prompting import PromptBuilder
-from prismatic.overwatch import initialize_overwatch
+from prismatic.models.backbones.llm.base_llm import LLMBackbone
+from prismatic.models.backbones.llm.prompting import (
+    LLaMa2ChatPromptBuilder,
+    PromptBuilder,
+    PurePromptBuilder,
+    VicunaV15ChatPromptBuilder,
+)
 
-# Suppress HF Deprecation Warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
+# Registry =>> Support LLaMa-2 Models (from HF Transformers)
+# fmt: off
+LLAMA2_MODELS = {
+    # === Pure Meta LLaMa-2 (non-instruct/chat-tuned) Models ===
+    "llama2-7b-pure": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-hf"
+    },
 
-# Initialize Overwatch =>> Wraps `logging.Logger`
-overwatch = initialize_overwatch(__name__)
+    "llama2-13b-pure": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-hf"
+    },
 
+    # === Meta LLaMa-2 Chat Models ===
+    "llama2-7b-chat": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-chat-hf"
+    },
 
-# === Abstract Base Class for arbitrary HF LLM Backbones ===
-class LLMBackbone(nn.Module, ABC):
-    def __init__(self, llm_backbone_id: str) -> None:
-        super().__init__()
-        self.identifier = llm_backbone_id
+    "llama2-13b-chat": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-chat-hf"
+    },
 
-        # Instance attributes for an LLM Backbone
-        self.llm: PreTrainedModel = None
-        self.tokenizer: PreTrainedTokenizerBase = None
-        self.bos_exists: bool = True
+    # === Vicuna v1.5 Chat Models ===
+    "vicuna-v15-7b": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-7b-v1.5"
+    },
 
-    def get_tokenizer(self) -> PreTrainedTokenizerBase:
-        return self.tokenizer
-
-    @abstractmethod
-    def get_fsdp_wrapping_policy(self) -> Callable: ...
-
-    @abstractmethod
-    def enable_gradient_checkpointing(self) -> None: ...
-
-    @abstractmethod
-    def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        use_cache: Optional[bool] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-    ) -> CausalLMOutputWithPast:
-        """Run a forward pass through the LLM given targets (labels), returning the scalar Cross-Entropy Loss"""
-        raise NotImplementedError
-
-    @abstractmethod
-    def embed_input_ids(self, input_ids: torch.LongTensor) -> torch.Tensor: ...
-
-    @property
-    @abstractmethod
-    def prompt_builder_fn(self) -> Type[PromptBuilder]: ...
-
-    @property
-    @abstractmethod
-    def transformer_layer_cls(self) -> Type[nn.Module]: ...
-
-    @property
-    @abstractmethod
-    def half_precision_dtype(self) -> torch.dtype: ...
-
-    @property
-    def embed_dim(self) -> int:
-        return self.llm.config.hidden_size
-
-    @property
-    def pad_token_id(self) -> int:
-        return self.tokenizer.pad_token_id
+    "vicuna-v15-13b": {
+        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-13b-v1.5"
+    },
+}
+# fmt: on
 
 
-# === Abstract Base Class for Arbitrary HF Causal LLMs ===
-class HFCausalLLMBackbone(LLMBackbone, ABC):
+class OpenLMLLMBackbone(LLMBackbone):
     def __init__(
         self,
         llm_backbone_id: str,
@@ -162,6 +119,11 @@ class HFCausalLLMBackbone(LLMBackbone, ABC):
         # Additionally, explicitly verify that Tokenizer padding_side is set to right for training!
         assert self.tokenizer.padding_side == "right", "Tokenizer `padding_side` is not set to `right`!"
 
+        # [Special Case] LLaMa-2 PAD Token Handling --> for clarity, we add an extra token (and resize)
+        self.tokenizer.add_special_tokens({"pad_token": "<PAD>"})
+        self.llm.config.pad_token_id = self.tokenizer.pad_token_id
+        self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
+
     def get_fsdp_wrapping_policy(self) -> Callable:
         """Return a `transformer_auto_wrap_policy` where we wrap each instance of `self.transformer_layer_cls`"""
         transformer_block_policy = partial(
@@ -204,3 +166,25 @@ class HFCausalLLMBackbone(LLMBackbone, ABC):
             return_dict=return_dict,
         )
         return output
+
+    @property
+    def prompt_builder_fn(self) -> Type[PromptBuilder]:
+        if self.identifier.startswith("llama2-") and self.identifier.endswith("-pure"):
+            return PurePromptBuilder
+
+        elif self.identifier.startswith("llama2-") and self.identifier.endswith("-chat"):
+            return LLaMa2ChatPromptBuilder
+
+        elif self.identifier.startswith("vicuna"):
+            return VicunaV15ChatPromptBuilder
+
+        raise ValueError(f"No PromptBuilder defined for LLM Backbone `{self.identifier}`")
+
+    @property
+    def transformer_layer_cls(self) -> Type[nn.Module]:
+        return LlamaDecoderLayer
+
+    @property
+    def half_precision_dtype(self) -> torch.dtype:
+        """LLaMa-2 was trained in BF16; see https://huggingface.co/docs/transformers/main/model_doc/llama2."""
+        return torch.bfloat16

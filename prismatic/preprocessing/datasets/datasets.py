@@ -8,6 +8,7 @@ formatting (e.g., SYS_PROMPT + USER: ... ASSISTANT: ... for Vicuña v1.5 Chat mo
 We currently only support Map-style Datasets; assumes that all files (annotations, images) are on local disk, and that
 random access image reading is relatively cheap/fast.
 """
+
 import copy
 import json
 from pathlib import Path
@@ -40,6 +41,11 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
 
         # Create Prompt Template
         self.prompt_template = "{caption}" + self.tokenizer.eos_token
+
+        # some tokenizers use bos tokens, in which case we want the image embedding after the first bos token
+        self.bos_exists = (
+            self.tokenizer("Testing 123", add_special_tokens=True).input_ids[0] == self.tokenizer.bos_token_id
+        ) and (self.tokenizer("Testing 123", add_special_tokens=False).input_ids[0] != self.tokenizer.bos_token_id)
 
         # Load Chat JSON
         with open(self.chat_json, "r") as f:
@@ -80,7 +86,8 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         labels = copy.deepcopy(input_ids)
 
         # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
-        labels[0] = IGNORE_INDEX
+        if self.bos_exists:
+            labels[0] = IGNORE_INDEX
 
         # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
         pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
@@ -118,6 +125,11 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         # Load Instruct JSON
         with open(self.instruct_json, "r") as f:
             self.examples = json.load(f)
+
+        # some tokenizers use bos tokens, in which case we want the image embedding after the first bos token
+        self.bos_exists = (
+            self.tokenizer("Testing 123", add_special_tokens=True).input_ids[0] == self.tokenizer.bos_token_id
+        ) and (self.tokenizer("Testing 123", add_special_tokens=False).input_ids[0] != self.tokenizer.bos_token_id)
 
     # === Unimodal + Multimodal Handling ===
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
@@ -169,8 +181,9 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         if "image" in self.examples[idx]:
             image_path = Path(self.examples[idx]["image"])
 
-            # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
-            labels[0] = IGNORE_INDEX
+            if self.bos_exists:
+                # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
+                labels[0] = IGNORE_INDEX
 
             # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
             pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
