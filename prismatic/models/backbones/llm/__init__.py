@@ -1,3 +1,3 @@
 from .base_llm import LLMBackbone
 from .llama2 import LLaMa2LLMBackbone
-from .openlm import OpenLMLLMBackbone
+from .openlm import OpenlmLLMBackbone

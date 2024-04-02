@@ -68,6 +68,7 @@ class ModelConfig(ChoiceRegistry):
     # Enable Traditional Mixed Precision Training via Torch Native AMP (`autocast`)
     enable_mixed_precision_training: bool = True            # Whether to enable mixed precision training
     reduce_in_full_precision: bool = False                  # Whether to run gradient reduction in FP32
+    llm_checkpoint_path: Optional[str] = None               # Path to checkpoint to load (e.g., for open_lm models)
 
     # fmt: on
 

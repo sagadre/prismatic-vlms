@@ -1,15 +1,16 @@
 """
-llama2.py
+openlm.py
 
-Class definition for all LLMs derived from LlamaForCausalLM.
+Class definition for all LLMs derived from https://github.com/mlfoundations/open_lm.
 """
-
-from typing import Optional, Type
+from functools import partial
+from typing import Callable, List, Optional, Type
 
 import torch
 from torch import nn as nn
-from transformers import LlamaForCausalLM
-from transformers.models.llama.modeling_llama import LlamaDecoderLayer
+from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
+from transformers import PreTrainedModel
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from prismatic.models.backbones.llm.base_llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import (
@@ -18,51 +19,43 @@ from prismatic.models.backbones.llm.prompting import (
     PurePromptBuilder,
     VicunaV15ChatPromptBuilder,
 )
+from prismatic.models.backbones.llm.base_llm import overwatch
 
-# Registry =>> Support LLaMa-2 Models (from HF Transformers)
+try:
+    from open_lm.model import Block
+    from open_lm.utils.transformers.hf_model import OpenLMforCausalLM
+    from open_lm.utils.transformers.hf_config import OpenLMConfig
+    from open_lm.model import create_params
+    from open_lm.params import add_model_args
+    from transformers import GPTNeoXTokenizerFast
+except ImportError:
+    overwatch.info(f"open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
+
+
 # fmt: off
-LLAMA2_MODELS = {
-    # === Pure Meta LLaMa-2 (non-instruct/chat-tuned) Models ===
-    "llama2-7b-pure": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-hf"
-    },
-
-    "llama2-13b-pure": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-hf"
-    },
-
-    # === Meta LLaMa-2 Chat Models ===
-    "llama2-7b-chat": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-7b-chat-hf"
-    },
-
-    "llama2-13b-chat": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "meta-llama/Llama-2-13b-chat-hf"
-    },
-
-    # === Vicuna v1.5 Chat Models ===
-    "vicuna-v15-7b": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-7b-v1.5"
-    },
-
+OPENLM_MODELS = {
     "vicuna-v15-13b": {
-        "llm_family": "llama2", "llm_cls": LlamaForCausalLM, "hf_hub_path": "lmsys/vicuna-13b-v1.5"
+        "llm_family": "open_lm", "llm_cls": OpenLMforCausalLM, "hf_hub_path": ""
     },
 }
 # fmt: on
 
+class OpenlmArgs(object):
+    pass
 
-class OpenLMLLMBackbone(LLMBackbone):
+
+class OpenlmLLMBackbone(LLMBackbone):
     def __init__(
         self,
-        llm_backbone_id: str,
-        llm_family: str,
-        llm_cls: Type[PreTrainedModel],
-        hf_hub_path: str,
+        llm_backbone_id: str,  # open_lm model.json
+        open_lm_args: OpenlmArgs,
+        llm_cls: OpenLMforCausalLM, #Type[PreTrainedModel],
+        hf_hub_path: str = "",  # unused
+        llm_family: str = "open_lm",
         llm_max_length: int = 2048,
-        hf_token: Optional[str] = None,
+        hf_token: Optional[str] = None,  # unused
         inference_mode: bool = False,
-        use_flash_attention_2: bool = False,
+        # use_flash_attention_2: bool = False,
     ) -> None:
         super().__init__(llm_backbone_id)
         self.llm_family = llm_family
@@ -71,28 +64,13 @@ class OpenLMLLMBackbone(LLMBackbone):
 
         # Initialize LLM (downloading from HF Hub if necessary) --> `llm_cls` is the actual {Model}ForCausalLM class!
         #   => Note: We're eschewing use of the AutoModel API so that we can be more explicit about LLM-specific details
-        if not self.inference_mode:
-            overwatch.info(f"Loading [bold]{llm_family}[/] LLM from [underline]`{hf_hub_path}`[/]", ctx_level=1)
-            self.llm = llm_cls.from_pretrained(
-                hf_hub_path,
-                token=hf_token,
-                use_flash_attention_2=use_flash_attention_2 if not self.inference_mode else False,
-                # The following parameters are set to prevent `UserWarnings` from HF; we want greedy decoding!
-                do_sample=False,
-                temperature=1.0,
-                top_p=1.0,
-            )
-
-        # [Contract] `inference_mode` means we're loading from a pretrained checkpoint; no need to load base weights!
-        else:
-            overwatch.info(f"Building empty [bold]{llm_family}[/] LLM from [underline]`{hf_hub_path}`[/]", ctx_level=1)
-            llm_config = AutoConfig.from_pretrained(hf_hub_path, token=hf_token)
-            self.llm = llm_cls._from_config(llm_config)
-            #
-            # print("DEBUG EMPTY LLM INITIALIZE")
-            # import IPython
-            # IPython.embed()
-            # exit(0)
+        self.llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
+        
+        if open_lm_args.checkpoint:
+            checkpoint = torch.load(open_lm_args.checkpoint)
+            state_dict = checkpoint["state_dict"]
+            state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
+            self.llm.model.load_state_dict(state_dict)
 
         # Lightweight Handling (with extended explanation) for setting some LLM Parameters
         #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)
@@ -106,10 +84,10 @@ class OpenLMLLMBackbone(LLMBackbone):
         if not self.inference_mode:
             self.llm.enable_input_require_grads()
 
-        # Load (Fast) Tokenizer
-        overwatch.info(f"Loading [bold]{llm_family}[/] (Fast) Tokenizer via the AutoTokenizer API", ctx_level=1)
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            hf_hub_path, model_max_length=self.llm_max_length, token=hf_token
+        # Load Tokenizer
+        overwatch.info(f"Loading [bold]{llm_family}[/] GPTNeoXTokenizerFast", ctx_level=1)
+        self.tokenizer = GPTNeoXTokenizerFast.from_pretrained(
+            "EleutherAI/gpt-neox-20b", model_max_length=self.llm_max_length
         )
 
         self.bos_exists = (
@@ -119,7 +97,7 @@ class OpenLMLLMBackbone(LLMBackbone):
         # Additionally, explicitly verify that Tokenizer padding_side is set to right for training!
         assert self.tokenizer.padding_side == "right", "Tokenizer `padding_side` is not set to `right`!"
 
-        # [Special Case] LLaMa-2 PAD Token Handling --> for clarity, we add an extra token (and resize)
+        # add pad token, note gptneox has vocab size of 50257, but open_lm by default has an lm_head with size 50432
         self.tokenizer.add_special_tokens({"pad_token": "<PAD>"})
         self.llm.config.pad_token_id = self.tokenizer.pad_token_id
         self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
@@ -182,9 +160,8 @@ class OpenLMLLMBackbone(LLMBackbone):
 
     @property
     def transformer_layer_cls(self) -> Type[nn.Module]:
-        return LlamaDecoderLayer
+        return Block
 
     @property
     def half_precision_dtype(self) -> torch.dtype:
-        """LLaMa-2 was trained in BF16; see https://huggingface.co/docs/transformers/main/model_doc/llama2."""
         return torch.bfloat16
