@@ -14,10 +14,8 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from prismatic.models.backbones.llm.base_llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import (
-    LLaMa2ChatPromptBuilder,
     PromptBuilder,
-    PurePromptBuilder,
-    VicunaV15ChatPromptBuilder,
+    OpenlmPromptBuilder
 )
 from prismatic.models.backbones.llm.base_llm import overwatch
 
@@ -147,16 +145,7 @@ class OpenlmLLMBackbone(LLMBackbone):
 
     @property
     def prompt_builder_fn(self) -> Type[PromptBuilder]:
-        if self.identifier.startswith("llama2-") and self.identifier.endswith("-pure"):
-            return PurePromptBuilder
-
-        elif self.identifier.startswith("llama2-") and self.identifier.endswith("-chat"):
-            return LLaMa2ChatPromptBuilder
-
-        elif self.identifier.startswith("vicuna"):
-            return VicunaV15ChatPromptBuilder
-
-        raise ValueError(f"No PromptBuilder defined for LLM Backbone `{self.identifier}`")
+        return OpenlmPromptBuilder
 
     @property
     def transformer_layer_cls(self) -> Type[nn.Module]:
