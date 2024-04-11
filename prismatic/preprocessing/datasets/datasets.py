@@ -152,12 +152,8 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             # Get "effective" string added to prompt --> handle whitespace for tokenizer type!
             msg = prompt_builder.add_turn(turn["from"], turn["value"])
 
-            # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
-            if isinstance(self.tokenizer, LlamaTokenizerFast):
-                msg = msg.rstrip()
-            else:
-                raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
-
+            msg = msg.rstrip()
+ 
             # Tokenize Input IDs
             turn_input_ids = self.tokenizer(msg, add_special_tokens=turn_idx == 0).input_ids
 

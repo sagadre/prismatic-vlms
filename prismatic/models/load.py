@@ -86,7 +86,7 @@ def load(
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
-    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/] via HF Transformers")
+    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/]")
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         model_cfg["llm_backbone_id"],
         llm_max_length=model_cfg.get("llm_max_length", 2048),

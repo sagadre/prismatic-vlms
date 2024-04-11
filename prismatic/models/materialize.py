@@ -8,7 +8,7 @@ from typing import Optional, Tuple
 
 from transformers import PreTrainedTokenizerBase
 
-from prismatic.models.backbones.llm import LLaMa2LLMBackbone, LLMBackbone
+from prismatic.models.backbones.llm import LLaMa2LLMBackbone, LLMBackbone, OpenlmLLMBackbone
 from prismatic.models.backbones.vision import (
     CLIPViTBackbone,
     DinoCLIPViTBackbone,
@@ -61,6 +61,9 @@ LLM_BACKBONES = {
     # === Vicuna-v1.5 Backbones ===
     "vicuna-v15-7b": {"cls": LLaMa2LLMBackbone, "kwargs": {}},
     "vicuna-v15-13b": {"cls": LLaMa2LLMBackbone, "kwargs": {}},
+
+    # === OpenLM Backbones ===
+    "openlm": {"cls": OpenlmLLMBackbone, "kwargs": {}},
 }
 
 # fmt: on
@@ -88,8 +91,12 @@ def get_llm_backbone_and_tokenizer(
     hf_token: Optional[str] = None,
     inference_mode: bool = False,
 ) -> Tuple[LLMBackbone, PreTrainedTokenizerBase]:
-    if llm_backbone_id in LLM_BACKBONES:
-        llm_cfg = LLM_BACKBONES[llm_backbone_id]
+    if "openlm" in llm_backbone_id or llm_backbone_id in LLM_BACKBONES:
+        if "openlm" in llm_backbone_id:
+            # Special Handling for OpenLM Backbones because it is a generic model
+            llm_cfg = LLM_BACKBONES["openlm"]
+        else:
+            llm_cfg = LLM_BACKBONES[llm_backbone_id]
         llm_backbone: LLMBackbone = llm_cfg["cls"](
             llm_backbone_id,
             llm_max_length=llm_max_length,
