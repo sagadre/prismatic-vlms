@@ -175,7 +175,11 @@ class FSDPStrategy(TrainingStrategy):
                 return isinstance(submodule, self.llm_transformer_layer_cls)
 
             # Note that the terms "activation checkpointing" and "gradient checkpointing" are synonymous!
-            apply_activation_checkpointing(self.vlm, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn)
+            if self.vlm.llm_backbone.llm_family == "open_lm":
+                self.vlm.llm_backbone.enable_gradient_checkpointing()
+                apply_activation_checkpointing(self.vlm.vision_backbone, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn)
+            else:
+                apply_activation_checkpointing(self.vlm, checkpoint_wrapper_fn=non_reentrant_wrapper, check_fn=check_fn)
 
         # Barrier =>> Sharding takes a minute?
         dist.barrier()
