@@ -12,4 +12,4 @@ transformers>=4.39.3
 wandb
 ninja
 flash-attn
-git+https://github.com/jmercat/open_lm_.git@input_embed
+git+https://github.com/mlfoundations/open_lm.git

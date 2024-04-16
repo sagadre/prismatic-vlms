@@ -289,7 +289,6 @@ class PrismaticVLM(VLM):
         # Handle Multimodal Indices is None --> pretend like the batch is fully multimodal (always image + text)!
         if multimodal_indices is None:
             multimodal_indices = torch.arange(len(input_ids), dtype=torch.long, device=input_ids.device)
-
         # Handle Multimodal Indices is Empty (len == 0) --> simple unimodal forward
         elif len(multimodal_indices) == 0:
             return self.llm_backbone(
@@ -429,6 +428,9 @@ class PrismaticVLM(VLM):
             fused_embeddings = torch.vstack([multimodal_embeddings, unimodal_embeddings])
             fused_attention_mask = torch.vstack([multimodal_attention_mask, unimodal_attention_mask])
             fused_labels = torch.vstack([multimodal_labels, unimodal_labels])
+
+        # Don't use a custom mask if it is not needed
+        fused_attention_mask = fused_attention_mask if not fused_attention_mask.all() else None
 
         # Run LLM Forward --> returns CausalLMOutputWithPast!
         return self.llm_backbone(

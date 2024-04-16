@@ -20,13 +20,13 @@ from prismatic.models.backbones.llm.prompting import (
     OpenlmPromptBuilder
 )
 from prismatic.models.backbones.llm.base_llm import overwatch
-from prismatic.util.file_utils import get_most_recent_pt_file
 
 try:
     from open_lm.model import Block
     from open_lm.utils.transformers.hf_model import OpenLMforCausalLM
     from open_lm.utils.transformers.hf_config import OpenLMConfig
     from open_lm.model import create_params
+    from open_lm.main import get_latest_checkpoint, load_model
     from transformers import GPTNeoXTokenizerFast
 except ImportError:
     overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
@@ -72,22 +72,22 @@ class OpenlmLLMBackbone(LLMBackbone):
             open_lm_args = yaml.safe_load(f)
         open_lm_args = Namespace(**open_lm_args)
         self.llm_max_length = int(open_lm_args.seq_len)
+        open_lm_args.fsdp = True
+        open_lm_args.distributed = True
 
         self.llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
 
         # Initialize LLM
         # [Contract] `inference_mode` means we're loading from a pretrained checkpoint; no need to load base weights now.
         if not self.inference_mode:
-            # if llm_backbone_id + "/checkpoints/latest-checkpoint.pt" exists, load it
-            checkpoint_path = llm_backbone_id + "/checkpoints/latest-checkpoint.pt"
-            # [Contract] checkpoints must be in a /checkpoints/ subdirectory from the `llm_backbone_id` directory
-            if not os.path.exists(checkpoint_path):
-                checkpoint_path = get_most_recent_pt_file(llm_backbone_id + "/checkpoints", ".pt")
-            if os.path.exists(checkpoint_path):
-                checkpoint = torch.load(checkpoint_path)
-                state_dict = checkpoint["state_dict"]
-                state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
-                self.llm.model.load_state_dict(state_dict)
+            checkpoint = get_latest_checkpoint(llm_backbone_id + "/checkpoints")
+            if checkpoint is None and os.path.exists(llm_backbone_id + "/checkpoints/latest-checkpoint.pt"):
+                checkpoint = llm_backbone_id + "/checkpoints/latest-checkpoint.pt"
+            if checkpoint is None:
+                overwatch.error(f"No checkpoint found in {llm_backbone_id}/checkpoints. No weights loaded.")
+            else:
+                open_lm_args.resume = checkpoint
+                load_model(open_lm_args, self.llm.model)
 
         # Lightweight Handling (with extended explanation) for setting some LLM Parameters
         #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)
@@ -120,8 +120,13 @@ class OpenlmLLMBackbone(LLMBackbone):
         # self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
 
     def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
-        state_dict = state_dict["state_dict"]
+        if "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+        # If the model comes from an OpenLM checkpoint this should be removed
         state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
+        # If the model comes from a Prismatic checkpoint this should be removed
+        state_dict = {x.replace("llm.model.", ""): y for x, y in state_dict.items()}
+        # Load the state dict
         self.llm.model.load_state_dict(state_dict, strict=strict, assign=assign)
 
     @property

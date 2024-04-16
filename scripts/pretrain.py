@@ -116,7 +116,7 @@ class PretrainConfig:
 
 @draccus.wrap()
 def pretrain(cfg: PretrainConfig) -> None:
-    overwatch.info("Prismatic VLM Training :: Gathering Light")
+    overwatch.info("Prismatic VLM Training")
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
     torch.cuda.set_device(device_id := (overwatch.rank() % torch.cuda.device_count()))
@@ -130,7 +130,6 @@ def pretrain(cfg: PretrainConfig) -> None:
         cfg.run_id = f"{dataset_id}+{model_id}+stage-{cfg.stage}+x{cfg.seed}" if cfg.run_id is None else cfg.run_id
 
     # Start =>> Build Directories and Set Randomness
-    overwatch.info('"Life is like a prism; what you see depends on how you turn the glass."', ctx_level=1)
     hf_token = cfg.hf_token.read_text().strip() if isinstance(cfg.hf_token, Path) else os.environ[cfg.hf_token]
     worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
     os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
@@ -228,7 +227,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     metrics.finalize()
 
     # And... we're done!
-    overwatch.info("... and that's all, folks!")
+    overwatch.info("Training Complete =>> Exiting")
     dist.barrier()
     dist.destroy_process_group()
 
