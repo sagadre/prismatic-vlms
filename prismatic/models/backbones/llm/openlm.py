@@ -45,7 +45,7 @@ class OpenlmLLMBackbone(LLMBackbone):
     OpenLM LLM Backbone class.
 
     llm_backbone_id: str
-        - should contain "open_lm" to indicate that this is an OpenLM model
+        - should contain "openlm" to indicate that this is an OpenLM model, either by being in the path or using "[openlm]" as a prefix
         - (if not inference_mode) should be the path to a directory with the following structure:
             [llm_backbone_id]: a directory containing the model's files
                 - params.txt: a file containing the model's parameters
@@ -62,6 +62,8 @@ class OpenlmLLMBackbone(LLMBackbone):
         **kwargs,
         # use_flash_attention_2: bool = False,
     ) -> None:
+        if llm_backbone_id.startswith("[openlm]"):
+            llm_backbone_id = llm_backbone_id.replace("[openlm]", "")
         super().__init__(llm_backbone_id)
         self.llm_family = "open_lm"
         self.inference_mode = inference_mode
