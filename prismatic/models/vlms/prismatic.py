@@ -90,6 +90,7 @@ class PrismaticVLM(VLM):
         llm_backbone: LLMBackbone,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
+        strict: bool = True,
     ) -> PrismaticVLM:
         """Initialize a PrismaticVLM from a pretrained checkpoint, freezing all weights, tailored for inference."""
         vlm = cls(
@@ -106,8 +107,8 @@ class PrismaticVLM(VLM):
             "projector" in model_state_dict and "llm_backbone" in model_state_dict
         ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
 
-        vlm.projector.load_state_dict(model_state_dict["projector"])
-        vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"])
+        vlm.projector.load_state_dict(model_state_dict["projector"], strict=strict)
+        vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"], strict=strict)
 
         # Freeze Weights
         vlm.requires_grad_(False)

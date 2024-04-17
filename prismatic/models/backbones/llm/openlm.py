@@ -12,7 +12,10 @@ from torch import nn as nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers.modeling_outputs import CausalLMOutputWithPast
 import yaml
-from argparse import Namespace
+import argparse
+import fsspec
+import subprocess
+import io
 
 from prismatic.models.backbones.llm.base_llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import (
@@ -27,6 +30,7 @@ try:
     from open_lm.utils.transformers.hf_config import OpenLMConfig
     from open_lm.model import create_params
     from open_lm.main import get_latest_checkpoint, load_model
+    from open_lm.params import add_model_args
     from transformers import GPTNeoXTokenizerFast
 except ImportError:
     overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
@@ -45,7 +49,7 @@ class OpenlmLLMBackbone(LLMBackbone):
     OpenLM LLM Backbone class.
 
     llm_backbone_id: str
-        - should contain "openlm" to indicate that this is an OpenLM model, either by being in the path or using "[openlm]" as a prefix
+        - should contain "openlm" to indicate that this is an OpenLM model, either by being in the path or using "(openlm)" as a prefix
         - (if not inference_mode) should be the path to a directory with the following structure:
             [llm_backbone_id]: a directory containing the model's files
                 - params.txt: a file containing the model's parameters
@@ -62,21 +66,38 @@ class OpenlmLLMBackbone(LLMBackbone):
         **kwargs,
         # use_flash_attention_2: bool = False,
     ) -> None:
-        if llm_backbone_id.startswith("[openlm]"):
-            llm_backbone_id = llm_backbone_id.replace("[openlm]", "")
+        if llm_backbone_id.startswith("(openlm)"):
+            llm_backbone_id = llm_backbone_id.replace("(openlm)", "")
         super().__init__(llm_backbone_id)
         self.llm_family = "open_lm"
         self.inference_mode = inference_mode
 
         # Read params.txt in the model directory
         # [Contract] `params.txt` must be in the `llm_backbone_id` directory
-        with open(llm_backbone_id + "/params.txt", "r") as f:
-            open_lm_args = yaml.safe_load(f)
-        open_lm_args = Namespace(**open_lm_args)
+
+        if llm_backbone_id.startswith("s3"):
+            while llm_backbone_id.endswith("/"):
+                llm_backbone_id = llm_backbone_id[:-1]
+            cmd = f"aws s3 cp {llm_backbone_id}/params.txt -"
+            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                raise Exception(f"Failed to fetch model from s3. stderr: {stderr.decode()}")
+            open_lm_args = yaml.safe_load(io.BytesIO(stdout))
+        else:
+            with fsspec.open(llm_backbone_id + "/params.txt", "rb") as f:
+                open_lm_args = yaml.safe_load(f)
+
+        model_args = argparse.ArgumentParser()
+        # For retro-compatability, we need to add the model args to the parser 
+        # so that default values are set for new args that might not figure in the params.txt
+        add_model_args(model_args)
+        open_lm_args.update(model_args.parse_args([]).__dict__)
+        open_lm_args = argparse.Namespace(**open_lm_args)
+
         self.llm_max_length = int(open_lm_args.seq_len)
         open_lm_args.fsdp = True
         open_lm_args.distributed = True
-
         self.llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
 
         # Initialize LLM
