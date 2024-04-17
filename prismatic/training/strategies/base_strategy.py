@@ -188,7 +188,7 @@ class TrainingStrategy(ABC):
                         loss = output.loss
 
                     # Commit Loss (Prior to Gradient Accumulation Normalization)
-                    metrics.commit(loss=loss)
+                    metrics.commit(loss=loss, tokens=batch["attention_mask"].sum().item())
 
                     # Normalize Loss to account for Gradient Accumulation --> Backward!
                     # [IMPORTANT] Technically speaking, doing gradient accumulation in this way is "incorrect"; this is

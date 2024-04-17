@@ -111,6 +111,7 @@ class Metrics:
         window_size: int = 128,
     ) -> None:
         self.run_id, self.run_dir, self.hparams, self.stage = run_id, run_dir, hparams, stage
+        self.grad_accumulation_steps, self.window_size = grad_accumulation_steps, window_size
 
         # Initialize Trackers
         self.trackers = []
@@ -134,6 +135,7 @@ class Metrics:
             "loss_raw": deque(maxlen=grad_accumulation_steps),
             "loss": deque(maxlen=window_size),
             "step_time": deque(maxlen=window_size),
+            "tokens": [],
             "lr": [],
         }
 
@@ -150,7 +152,7 @@ class Metrics:
         return f"=>> [Global Step] {self.global_step:06d} =>> LR :: {lr:.6f} -- Loss :: {loss:.4f}"
 
     def commit(
-        self, *, global_step: Optional[int] = None, lr: Optional[float] = None, update_step_time: bool = False, **kwargs
+        self, *, global_step: Optional[int] = None, lr: Optional[float] = None, update_step_time: bool = False, tokens: Optional[int] = None, **kwargs
     ) -> None:
         """Update all metrics in `self.state` by iterating through special positional arguments & kwargs."""
         if global_step is not None:
@@ -163,6 +165,9 @@ class Metrics:
         # Special Positional Arguments
         if lr is not None:
             self.state["lr"].append(lr)
+
+        if tokens is not None:
+            self.state["tokens"].append(tokens)
 
         if update_step_time:
             self.state["step_time"].append(time.time() - self.step_start_time)
@@ -183,7 +188,10 @@ class Metrics:
         loss_raw = torch.stack(list(self.state["loss_raw"])).mean().item()
         loss = torch.stack(list(self.state["loss"])).mean().item()
         step_time, lr = np.mean(list(self.state["step_time"])), self.state["lr"][-1]
+        tokens = float(np.sum(list(self.state["tokens"])))
+        tokens_mean = np.mean(list(self.state["tokens"][-self.window_size:]))*self.grad_accumulation_steps
         status = self.get_status(loss)
+        throughput = tokens_mean / step_time
 
         # Fire to Trackers
         prefix = self.stage.capitalize()
@@ -195,6 +203,8 @@ class Metrics:
                 f"{prefix}/Loss (Raw)": loss_raw,
                 f"{prefix}/Learning Rate": lr,
                 f"{prefix}/Step Time": step_time,
+                f"{prefix}/Tokens": tokens,
+                f"{prefix}/Throughput(tok/sec)": throughput,
             },
         )
         return status
