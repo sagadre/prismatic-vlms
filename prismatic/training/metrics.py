@@ -135,7 +135,8 @@ class Metrics:
             "loss_raw": deque(maxlen=grad_accumulation_steps),
             "loss": deque(maxlen=window_size),
             "step_time": deque(maxlen=window_size),
-            "tokens": [],
+            "text_tokens": [],
+            "padded_tokens": [],
             "lr": [],
         }
 
@@ -152,7 +153,7 @@ class Metrics:
         return f"=>> [Global Step] {self.global_step:06d} =>> LR :: {lr:.6f} -- Loss :: {loss:.4f}"
 
     def commit(
-        self, *, global_step: Optional[int] = None, lr: Optional[float] = None, update_step_time: bool = False, tokens: Optional[int] = None, **kwargs
+        self, *, global_step: Optional[int] = None, lr: Optional[float] = None, update_step_time: bool = False, text_tokens: Optional[int] = None, padded_tokens: Optional[int] = None, **kwargs
     ) -> None:
         """Update all metrics in `self.state` by iterating through special positional arguments & kwargs."""
         if global_step is not None:
@@ -166,8 +167,11 @@ class Metrics:
         if lr is not None:
             self.state["lr"].append(lr)
 
-        if tokens is not None:
-            self.state["tokens"].append(tokens)
+        if padded_tokens is not None:
+            self.state["padded_tokens"].append(padded_tokens)
+
+        if text_tokens is not None:
+            self.state["text_tokens"].append(text_tokens)
 
         if update_step_time:
             self.state["step_time"].append(time.time() - self.step_start_time)
@@ -188,10 +192,12 @@ class Metrics:
         loss_raw = torch.stack(list(self.state["loss_raw"])).mean().item()
         loss = torch.stack(list(self.state["loss"])).mean().item()
         step_time, lr = np.mean(list(self.state["step_time"])), self.state["lr"][-1]
-        tokens = float(np.sum(list(self.state["tokens"])))
-        tokens_mean = np.mean(list(self.state["tokens"][-self.window_size:]))*self.grad_accumulation_steps
+        total_tokens = float(np.sum(list(self.state["padded_tokens"])))
+        text_tokens = float(np.sum(list(self.state["text_tokens"])))
+        # Step time is updated at every full batch wherease total_tokens is updated at every step
+        total_tokens_mean = np.mean(list(self.state["padded_tokens"][-self.window_size:])) * self.grad_accumulation_steps
         status = self.get_status(loss)
-        throughput = tokens_mean / step_time
+        throughput = total_tokens_mean / step_time
 
         # Fire to Trackers
         prefix = self.stage.capitalize()
@@ -203,8 +209,9 @@ class Metrics:
                 f"{prefix}/Loss (Raw)": loss_raw,
                 f"{prefix}/Learning Rate": lr,
                 f"{prefix}/Step Time": step_time,
-                f"{prefix}/Tokens": tokens,
-                f"{prefix}/Throughput(tok/sec)": throughput,
+                f"{prefix}/Padded tokens": total_tokens,
+                f"{prefix}/Text tokens": text_tokens,
+                f"{prefix}/Throughput(tok per sec)": throughput,
             },
         )
         return status

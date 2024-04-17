@@ -11,6 +11,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Callable, Optional
 
+import numpy as np
+
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
@@ -188,7 +190,7 @@ class TrainingStrategy(ABC):
                         loss = output.loss
 
                     # Commit Loss (Prior to Gradient Accumulation Normalization)
-                    metrics.commit(loss=loss, tokens=batch["attention_mask"].sum().item())
+                    metrics.commit(loss=loss, text_tokens=batch["attention_mask"].sum().item(), padded_tokens=np.prod(output.logits.shape[:-1]))
 
                     # Normalize Loss to account for Gradient Accumulation --> Backward!
                     # [IMPORTANT] Technically speaking, doing gradient accumulation in this way is "incorrect"; this is
