@@ -33,9 +33,13 @@ dependencies = [
     "accelerate>=0.25.0",
     "draccus @ git+https://github.com/dlwh/draccus",
     "einops",
-    # "flash_attn>=2.3.3",  # Here for documentation -- install *AFTER* editable install (follow README)
+    # "flash_attn>=2.3.3",      # Here for documentation -- install *AFTER* editable install (follow README)
+    "huggingface_hub",
     "jsonlines",
+    "matplotlib",
+    "pyyaml-include==1.4.1",    # `pyyaml-include` major version 2 introduces breaking changes to `draccus`
     "rich",
+    "sentencepiece",
     "timm>=0.9.10",
     "torch>=2.1.0",
     "torchvision>=0.16.0",

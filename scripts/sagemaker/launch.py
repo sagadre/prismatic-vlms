@@ -36,16 +36,16 @@ LUSTRE_PARAMETERS = {
 class LaunchConfig:
     # fmt: off
     job_name: str = "sk-prismatic-vlm"                                  # Base Name for Job in Sagemaker Dashboard
-    instance_count: int = 2                                             # Number of Nodes for Multi-Node Training
+    instance_count: int = 1                                             # Number of Nodes for Multi-Node Training
     instance_type: str = "ml.p4de.24xlarge"                             # Instance Type (default: p4de.24xlarge)
     instance_n_gpus: int = 8                                            # Number of GPUs per Instance
 
     # Prismatic VLM Pretraining Parameters
     model_type: str = (                                                 # Unique Model ID (specifies config)
-        ModelRegistry.PRISM_DINOSIGLIP_CONTROLLED_7B.model_id
+        ModelRegistry.PRISM_DINOSIGLIP_224PX_7B.model_id
     )
     dataset_type: str = (                                               # Unique Dataset ID (specifies config)
-        DatasetRegistry.LLAVA_V15.dataset_id
+        DatasetRegistry.LLAVA_LVIS4V_LRV.dataset_id
     )
 
     # Stage & Batch Size Parameters =>> Set dynamically based on instance count!
@@ -122,17 +122,20 @@ def launch(cfg: LaunchConfig) -> None:
         entry_point=cfg.entry_point,
         image_uri=cfg.image_uri,
         hyperparameters=hyperparameters,
-        environment={"PYTHONPATH": "/opt/ml/code", "WANDB_API_KEY": wandb_api_key},
+        environment={
+            "PYTHONPATH": "/opt/ml/code",
+            "WANDB_API_KEY": wandb_api_key,
+            "HF_HOME": "/opt/ml/input/data/training/skaramcheti/cache",
+        },
         sagemaker_session=sagemaker_session,
         subnets=SUBNETS,
         security_group_ids=SECURITY_GROUP_IDS,
-        checkpoint_s3_uri=S3_LOG_PATH,
-        output_path=S3_LOG_PATH,
         keep_alive_period_in_seconds=3600,
         max_run=60 * 60 * 24 * cfg.max_days,
         distribution={"torch_distributed": {"enabled": True}},
+        disable_profiler=True,
     )
-    estimator.fit(inputs={"training": train_fs})
+    estimator.fit(inputs={"training": train_fs if not cfg.debug else "file:///mnt/fsx/"})
 
 
 if __name__ == "__main__":
