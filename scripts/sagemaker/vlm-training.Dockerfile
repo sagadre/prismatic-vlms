@@ -1,8 +1,8 @@
 # ===
 # Prismatic VLM Sagemaker Dockerfile
-#   => Base Image :: Python 3.10 & Pytorch 2.1.0
+#   => Base Image :: Python 3.10 & Pytorch 2.2.0
 # ===
-FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.1.0-gpu-py310-cu121-ubuntu20.04-sagemaker
+FROM 763104351884.dkr.ecr.us-east-1.amazonaws.com/pytorch-training:2.2.0-gpu-py310-cu121-ubuntu20.04-sagemaker
 
 # Sane Defaults
 RUN apt-get update
@@ -29,15 +29,22 @@ RUN apt-get update && apt-get install -y \
     libsdl2-2.0-0 \
     python-pygame
 
+# IMPORTANT :: Uninstall & Reinstall Torch (Sagemaker CPU Core Bug)
+RUN pip install --upgrade pip
+RUN pip uninstall -y torch
+RUN pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
 
 # Install Prismatic Python Dependencies (`pip`) + Sagemaker
-RUN pip install --upgrade pip
 RUN pip install \
     accelerate>=0.25.0 \
     draccus@git+https://github.com/dlwh/draccus \
     einops \
+    huggingface_hub \
     jsonlines \
+    matplotlib \
+    pyyaml-include==1.4.1 \
     rich \
+    sentencepiece \
     timm>=0.9.10 \
     transformers>=4.38.1 \
     wandb \

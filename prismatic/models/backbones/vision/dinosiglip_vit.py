@@ -19,6 +19,10 @@ from prismatic.models.backbones.vision.base_vision import ImageTransform, Letter
 
 # Registry =>> Supported DinoSigLIP Pairs (as TIMM identifiers)
 DINOSigLIP_VISION_BACKBONES = {
+    "dinosiglip-vit-so-224px": {
+        "dino": "vit_large_patch14_reg4_dinov2.lvd142m",
+        "siglip": "vit_so400m_patch14_siglip_224",
+    },
     "dinosiglip-vit-so-384px": {
         "dino": "vit_large_patch14_reg4_dinov2.lvd142m",
         "siglip": "vit_so400m_patch14_siglip_384",
