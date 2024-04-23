@@ -259,6 +259,19 @@ class Exp_13B_Llama2(Exp_13B_One_Stage):
     llm_backbone_id: str = "llama2-13b-pure"
 
 
+# ~ Additional LLM Backbones ~
+@dataclass
+class Ext_Exp_7B_Llama2_Chat(Exp_7B_One_Stage):
+    model_id: str = "llama2-chat+7b"
+    llm_backbone_id: str = "llama2-7b-chat"
+
+
+@dataclass
+class Ext_Exp_13B_Llama2_Chat(Exp_13B_One_Stage):
+    model_id: str = "llama2-chat+13b"
+    llm_backbone_id: str = "llama2-13b-chat"
+
+
 # Section 4.3B :: ✌️ --> Co-training on Language-only Data
 #   =>> Note :: Run with `--dataset.type "llava-multimodal" (multimodal data only / no co-training)
 @dataclass
@@ -501,6 +514,11 @@ class ModelRegistry(Enum):
     EXP_LLAMA2_7B = Exp_7B_Llama2
     EXP_LLAMA2_13B = Exp_13B_Llama2
 
+    # ~ Additional LLM Backbone Experiments :: LLaMa-2 Chat ~
+    EXT_EXP_LLAMA2_CHAT_7B = Ext_Exp_7B_Llama2_Chat
+    EXT_EXP_LLAMA2_CHAT_13B = Ext_Exp_13B_Llama2_Chat
+
+    # Cotraining w/ Unimodal Data
     EXP_VICUNA_NO_COTRAINING_7B = Exp_7B_Vicuna_No_Cotraining
     EXP_LLAMA2_NO_COTRAINING_7B = Exp_7B_Llama2_No_Cotraining
 
