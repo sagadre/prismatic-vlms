@@ -78,7 +78,7 @@ def upload(cfg: UploadConfig) -> None:
     subprocess.run(
         f"HF_HUB_ENABLE_HF_TRANSFER=1 huggingface-cli upload {cfg.hub_repo} {convert_path!s} {cfg.model_id}/",
         shell=True,
-        check=True
+        check=True,
     )
 
     # Done
