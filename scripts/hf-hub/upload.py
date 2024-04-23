@@ -11,7 +11,9 @@ Preliminaries:
     - Login via the HuggingFace CLI --> `huggingface-cli login`
     - Verify that `openvla` is in "orgs" --> `huggingface-cli whoami`
 
-Run with `python scripts/hf-hub/upload.py
+Run with `python scripts/hf-hub/upload.py \
+    --model_id "prism-dinosiglip-224px+7b" \
+    --run_dir ""/mnt/fsx/x-prismatic-vlms/runs/llava-lvis4v-lrv+prism-dinosiglip-224px+7b+stage-finetune+x7"`
 """
 
 import os
@@ -28,13 +30,10 @@ import torch
 @dataclass
 class UploadConfig:
     # fmt: off
-    # model_id: str                               # Short Model Identifier to use in HF Hub Uploads
-    # run_dir: Union[str, Path]                   # Absolute Path to Top-Level Run Directory (contains `config.yaml`)
+    model_id: str                               # Short Model Identifier to use in HF Hub Uploads
+    run_dir: Union[str, Path]                   # Absolute Path to Top-Level Run Directory (contains `config.yaml`)
 
-    model_id: str = "prism-dinosiglip-224px+7b"
-    run_dir: Union[str, Path] = "/mnt/fsx/x-prismatic-vlms/runs/llava-lvis4v-lrv+prism-dinosiglip-224px+7b+stage-finetune+x7"
-
-    conversion_dir = Path(
+    conversion_dir = Path(                      # Parent Directory to Store BF16 Converted Checkpoints
         "/mnt/fsx/x-prismatic-vlms/release/"
     )
 
