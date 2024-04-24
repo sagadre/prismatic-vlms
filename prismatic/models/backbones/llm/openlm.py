@@ -12,6 +12,7 @@ from torch import nn as nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers.modeling_outputs import CausalLMOutputWithPast
 import yaml
+import json
 import argparse
 import fsspec
 import subprocess
@@ -68,9 +69,20 @@ class OpenlmLLMBackbone(LLMBackbone):
     ) -> None:
         if llm_backbone_id.startswith("(openlm)"):
             llm_backbone_id = llm_backbone_id.replace("(openlm)", "")
+            ignore_keys = []
+        if llm_backbone_id.startswith("(openvlm)"):
+            llm_backbone_id = llm_backbone_id.replace("(openvlm)", "")
+            ignore_keys = ["image_extractor", "image_projector"]
+
         super().__init__(llm_backbone_id)
         self.llm_family = "open_lm"
         self.inference_mode = inference_mode
+
+        model_args = argparse.ArgumentParser()
+        # For retro-compatability, we need to add the model args to the parser 
+        # so that default values are set for new args that might not figure in the params.txt
+        add_model_args(model_args)
+        open_lm_args = model_args.parse_args([]).__dict__
 
         # Read params.txt in the model directory
         # [Contract] `params.txt` must be in the `llm_backbone_id` directory
@@ -83,17 +95,33 @@ class OpenlmLLMBackbone(LLMBackbone):
             stdout, stderr = proc.communicate()
             if proc.returncode != 0:
                 raise Exception(f"Failed to fetch model from s3. stderr: {stderr.decode()}")
-            open_lm_args = yaml.safe_load(io.BytesIO(stdout))
+            open_lm_args.update(yaml.safe_load(io.BytesIO(stdout)))
         else:
             with fsspec.open(llm_backbone_id + "/params.txt", "rb") as f:
-                open_lm_args = yaml.safe_load(f)
+                open_lm_args.update(yaml.safe_load(f))
 
-        model_args = argparse.ArgumentParser()
-        # For retro-compatability, we need to add the model args to the parser 
-        # so that default values are set for new args that might not figure in the params.txt
-        add_model_args(model_args)
-        open_lm_args.update(model_args.parse_args([]).__dict__)
         open_lm_args = argparse.Namespace(**open_lm_args)
+
+        ### TODO: This is a hack to avoid having to point to an exact existing model json file but it will be hard to maintain
+        model_json = {}
+        additional_keys = ["attn_name", "attn_activation", "attn_seq_scalar", "attn_seq_scalar_alpha", ]
+        temp_params = create_params(open_lm_args)
+        for key, value in temp_params.__dict__.items():
+            if hasattr(open_lm_args, key):
+                model_json[key] = open_lm_args.__dict__[key]
+        for key in additional_keys:
+            model_json[key] = open_lm_args.__dict__[key]
+        model_json["hidden_dim"] = temp_params.dim
+        model_json["n_layers"] = temp_params.n_layers
+        model_json["n_heads"] = temp_params.n_heads
+        model_json["post_embed_norm"] = temp_params.post_embed_norm
+        model_json["weight_tying"] = temp_params.weight_tying
+        model_json["model_norm"] = open_lm_args.model_norm
+
+        with open(llm_backbone_id + "/model_params.json", "w") as f:
+            json.dump(model_json, f)
+        open_lm_args.model = llm_backbone_id + "/model_params.json"
+        ### end of hack
 
         self.llm_max_length = int(open_lm_args.seq_len)
         open_lm_args.fsdp = True
@@ -110,7 +138,7 @@ class OpenlmLLMBackbone(LLMBackbone):
                 overwatch.error(f"No checkpoint found in {llm_backbone_id}/checkpoints. No weights loaded.")
             else:
                 open_lm_args.resume = checkpoint
-                load_model(open_lm_args, self.llm.model)
+                load_model(open_lm_args, self.llm.model, filter_keys=ignore_keys)
 
         # Lightweight Handling (with extended explanation) for setting some LLM Parameters
         #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)

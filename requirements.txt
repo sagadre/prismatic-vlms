@@ -1,7 +1,6 @@
 accelerate>=0.25.0
 draccus
 einops
-# flash_attn>=2.3.3  # Note: As per your comment, this is for documentation and should be installed after an editable install.
 jsonlines
 rich
 timm>=0.9.10
@@ -12,4 +11,4 @@ transformers>=4.39.3
 wandb
 ninja
 flash-attn
-git+https://github.com/mlfoundations/open_lm.git
+git+https://github.com/jmercat/open_lm_.git@mamba_update
