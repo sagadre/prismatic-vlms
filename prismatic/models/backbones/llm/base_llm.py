@@ -145,7 +145,12 @@ class HFCausalLLMBackbone(LLMBackbone, ABC):
 
         # Load (Fast) Tokenizer
         overwatch.info(f"Loading [bold]{llm_family}[/] (Fast) Tokenizer via the AutoTokenizer API", ctx_level=1)
-        self.tokenizer = AutoTokenizer.from_pretrained(hf_hub_path, model_max_length=self.llm_max_length, token=hf_token)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            hf_hub_path,
+            model_max_length=self.llm_max_length,
+            token=hf_token,
+            padding_side="right",
+        )
 
         # Validation =>> Our VLM logic currently operates under the assumption that the tokenization of a new input
         #                starts with a <BOS> token unless `add_special_tokens = False`; for these models, we empirically
