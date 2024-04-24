@@ -154,7 +154,12 @@ class OpenlmLLMBackbone(LLMBackbone):
 
     @property
     def embed_dim(self) -> int:
-        return self.llm.config.dim
+        if hasattr(self.llm.config, "dim"):
+            return self.llm.config.dim
+        elif hasattr(self.llm.config, "d_model"):
+            return self.llm.config.d_model
+        else:
+            raise ValueError("Could not find `dim` or `d_model` in the LLM config.")
 
     def get_fsdp_wrapping_policy(self) -> Callable:
         """Return a `transformer_auto_wrap_policy` where we wrap each instance of `self.transformer_layer_cls`"""
