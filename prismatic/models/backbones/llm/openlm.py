@@ -178,6 +178,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
         # If the model comes from a Prismatic checkpoint this should be removed
         state_dict = {x.replace("llm.model.", ""): y for x, y in state_dict.items()}
+        state_dict = {k: v for k, v in state_dict.items() if "inv_freq" not in k}
         # Load the state dict
         self.llm.model.load_state_dict(state_dict, strict=strict, assign=assign)
 
