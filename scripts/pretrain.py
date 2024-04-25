@@ -33,10 +33,12 @@ import yaml
 
 from prismatic.conf import DatasetConfig, DatasetRegistry, ModelConfig, ModelRegistry
 from prismatic.models import get_llm_backbone_and_tokenizer, get_vision_backbone_and_transform, get_vlm
+from prismatic.models.backbones.llm.openlm import get_vision_state_dict
 from prismatic.overwatch import initialize_overwatch
 from prismatic.preprocessing import get_dataset_and_collator
 from prismatic.training import Metrics, get_train_strategy
 from prismatic.util import set_global_seed
+
 
 # Disable Tokenizers Parallelism to Play Nice w/ PyTorch Multiprocessing DataLoaders
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -147,6 +149,16 @@ def pretrain(cfg: PretrainConfig) -> None:
         cfg.model.vision_backbone_id, image_resize_strategy=cfg.model.image_resize_strategy
     )
 
+    load_from = cfg.pretrained_checkpoint
+    if cfg.model.llm_backbone_id.startswith("(openvlm)"):
+        overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] from OpenVLM Checkpoint")
+        # Special Handling for OpenVLM Backbones because it contains vision + language components
+        vision_state_dict = get_vision_state_dict(cfg.model.llm_backbone_id)
+        vision_backbone.load_state_dict(vision_state_dict)
+        if cfg.pretrained_checkpoint is None:
+            load_from = cfg.model.llm_backbone_id
+
+
     # Load LLM Backbone --> on CPU, in Full Precision (initializing Tokenizer + handling special tokens if necessary)
     overwatch.info(f"Loading Pretrained LLM [bold]{cfg.model.llm_backbone_id}[/]")
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
@@ -169,7 +181,7 @@ def pretrain(cfg: PretrainConfig) -> None:
 
     # Load Weights from Checkpoint (depends on stage, config)
     overwatch.info(f"Invoking `VLM.load_checkpoint()` for `{model_id}` => Training Stage: `{cfg.stage}`")
-    vlm.load_from_checkpoint(cfg.stage, run_dir, pretrained_checkpoint=cfg.pretrained_checkpoint)
+    vlm.load_from_checkpoint(cfg.stage, run_dir, pretrained_checkpoint=load_from)
 
     # Get Dataset for Specified Stage
     overwatch.info(f"Creating Dataset `{cfg.dataset.dataset_id}` => Stage: `{cfg.stage}`")

@@ -23,6 +23,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from prismatic.models.backbones.llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import VisionBackbone
+from prismatic.models.backbones.llm.openlm import get_projector_state_dict
 from prismatic.models.vlms.base_vlm import VLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
@@ -191,7 +192,9 @@ class PrismaticVLM(VLM):
             overwatch.info(
                 f"PrismaticVLM with `{self.arch_specifier = }` does not require pretrained weights!", ctx_level=1
             )
-            return
+            if pretrained_checkpoint is None or not pretrained_checkpoint.startswith("(openvlm)"):
+                # If we're not using OpenVLM, we don't need to load the projectors from it
+                return
 
         # Otherwise, handle stage-specific logic!
         if stage == "align":
@@ -203,10 +206,15 @@ class PrismaticVLM(VLM):
 
         # Config specifies path to a checkpoint to load
         if pretrained_checkpoint is not None:
-            overwatch.info(f"Loading from Provided Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
-            model_state_dict = torch.load(pretrained_checkpoint)["model"]
-            self.projector.load_state_dict(model_state_dict["projector"])
+            if pretrained_checkpoint.startswith("(openvlm)"):
+                overwatch.info(f"Loading projector from OpenVLM Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
+                projector_state_dict = get_projector_state_dict(pretrained_checkpoint)
+            else:
+                overwatch.info(f"Loading projector from Prismatic Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
+                model_state_dict = torch.load(pretrained_checkpoint)["model"]
+                projector_state_dict = model_state_dict["projector"]
 
+            self.projector.load_state_dict(projector_state_dict)
             return
 
         # [Contract] If no `pretrained_checkpoint`, assume `align` lives in the run directory; string substitution!

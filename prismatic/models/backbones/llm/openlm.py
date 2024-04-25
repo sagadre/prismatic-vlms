@@ -3,7 +3,7 @@ openlm.py
 
 Class definition for all LLMs derived from https://github.com/mlfoundations/open_lm.
 """
-from functools import partial
+from functools import partial, cache
 from typing import Callable, List, Optional, Type
 import os
 
@@ -31,6 +31,7 @@ try:
     from open_lm.utils.transformers.hf_config import OpenLMConfig
     from open_lm.model import create_params
     from open_lm.main import get_latest_checkpoint, load_model
+    from open_lm.file_utils import pt_load
     from open_lm.params import add_model_args
     from transformers import GPTNeoXTokenizerFast
 except ImportError:
@@ -245,3 +246,34 @@ class OpenlmLLMBackbone(LLMBackbone):
     @property
     def half_precision_dtype(self) -> torch.dtype:
         return torch.bfloat16
+
+
+@cache
+def get_vlm_state_dict(llm_backbone_id: str) -> dict:
+    assert llm_backbone_id.startswith("(openvlm)"), "This function is only for OpenLM models"
+
+    # Special Handling for OpenLM Backbones because it contains vision + language components
+    pretrained_checkpoint = llm_backbone_id[9:] + "/checkpoints/"
+    pretrained_checkpoint = get_latest_checkpoint(pretrained_checkpoint)
+    overwatch.info(f"Loading from Provided OpenLM Checkpoint {pretrained_checkpoint}", ctx_level=1)
+    full_state_dict = pt_load(pretrained_checkpoint)["state_dict"]
+    return full_state_dict
+
+
+def get_vision_state_dict(llm_backbone_id: str) -> dict:
+    full_state_dict = get_vlm_state_dict(llm_backbone_id)
+    is_extractor = lambda k: k.startswith("image_extractors")
+    vision_state_dict = {k: v for k, v in full_state_dict.items() if is_extractor(k)}
+    # Replace keys to match the vision backbone naming convention of Prismatic
+    vision_state_dict = {k.replace("image_extractors.0.model", "siglip_featurizer"): v for k, v in vision_state_dict.items()}
+    vision_state_dict = {k.replace("image_extractors.1.model", "dino_featurizer"): v for k, v in vision_state_dict.items()}
+    return vision_state_dict
+
+
+def get_projector_state_dict(llm_backbone_id: str) -> dict:
+    full_state_dict = get_vlm_state_dict(llm_backbone_id)
+    is_projector = lambda k: k.startswith("image_projector")
+    projector_state_dict = {k: v for k, v in full_state_dict.items() if is_projector(k)}
+    projector_state_dict = {k.replace("image_projector.", ""): v for k, v in projector_state_dict.items()}
+    return projector_state_dict
+                             

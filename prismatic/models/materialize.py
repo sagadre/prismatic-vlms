@@ -91,8 +91,9 @@ def get_llm_backbone_and_tokenizer(
     hf_token: Optional[str] = None,
     inference_mode: bool = False,
 ) -> Tuple[LLMBackbone, PreTrainedTokenizerBase]:
-    if "openlm" in llm_backbone_id.lower() or "open_lm" in llm_backbone_id.lower() or llm_backbone_id in LLM_BACKBONES:
-        if "openlm" in llm_backbone_id.lower() or "open_lm" in llm_backbone_id.lower():
+    is_openlm = any(model in llm_backbone_id.lower() for model in ["openlm", "open_lm", "openvlm", "open_vlm"])
+    if is_openlm or llm_backbone_id in LLM_BACKBONES:
+        if is_openlm:
             # Special Handling for OpenLM Backbones because it is a generic model
             llm_cfg = LLM_BACKBONES["openlm"]
         else:
