@@ -10,5 +10,4 @@ torchaudio
 transformers>=4.39.3
 wandb
 ninja
-flash-attn
 git+https://github.com/jmercat/open_lm_.git@mamba_update
