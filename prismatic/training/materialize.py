@@ -50,6 +50,8 @@ def get_train_strategy(
             per_device_batch_size=per_device_batch_size,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
+            beta1=beta1,
+            beta2=beta2,
             max_grad_norm=max_grad_norm,
             lr_scheduler_type=lr_scheduler_type,
             warmup_ratio=warmup_ratio,
