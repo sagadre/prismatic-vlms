@@ -111,6 +111,7 @@ class DDPStrategy(TrainingStrategy):
             f"         |-> Use Native AMP = {self.enable_mixed_precision_training} ({self.mixed_precision_dtype})\n\n"
             f"         |-> Default AdamW LR = {self.learning_rate}\n"
             f"         |-> AdamW Weight Decay = {self.weight_decay}\n"
+            f"         |-> AdamW Betas = ({self.beta1}, {self.beta2})\n"
             f"         |-> LR Scheduler Type = {self.lr_scheduler_type}\n"
             f"         |-> LR Scheduler Warmup Steps (Ratio) = {num_warmup_steps} ({self.warmup_ratio})\n"
             f"         |-> Dataset Size = {n_train_examples} Examples\n"

@@ -48,6 +48,8 @@ class FSDPStrategy(TrainingStrategy):
         per_device_batch_size: int,
         learning_rate: float,
         weight_decay: float,
+        beta1: float,
+        beta2: float,
         max_grad_norm: float,
         lr_scheduler_type: str,
         warmup_ratio: float,
@@ -68,6 +70,8 @@ class FSDPStrategy(TrainingStrategy):
             per_device_batch_size=per_device_batch_size,
             learning_rate=learning_rate,
             weight_decay=weight_decay,
+            beta1=beta1,
+            beta2=beta2,
             max_grad_norm=max_grad_norm,
             lr_scheduler_type=lr_scheduler_type,
             warmup_ratio=warmup_ratio,
@@ -235,6 +239,7 @@ class FSDPStrategy(TrainingStrategy):
             f"                 |-> Buffer Precision = {fsdp_precision_policy.buffer_dtype}\n\n"
             f"         |-> Default AdamW LR = {self.learning_rate}\n"
             f"         |-> AdamW Weight Decay = {self.weight_decay}\n"
+            f"         |-> AdamW Betas = ({self.beta1}, {self.beta2})\n"
             f"         |-> LR Scheduler Type = {self.lr_scheduler_type}\n"
             f"         |-> LR Scheduler Warmup Steps (Ratio) = {num_warmup_steps} ({self.warmup_ratio})\n"
             f"         |-> Dataset Size = {n_train_examples} Examples\n"
