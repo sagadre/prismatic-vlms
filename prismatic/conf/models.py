@@ -44,6 +44,8 @@ class ModelConfig(ChoiceRegistry):
     align_max_grad_norm: float                              # Max Grad Norm (for global gradient clipping)
     align_lr_scheduler_type: str                            # LR Scheduler (default: "linear-warmup+cosine-decay")
     align_warmup_ratio: float                               # Fraction of total steps to warmup
+    align_beta1: float                                      # AdamW Beta1 (default: 0.9)
+    align_beta2: float                                      # AdamW Beta2 (default: 0.999)
 
     align_train_strategy: str                               # Align Train Strategy (default: "fsdp-shard-grad-op")
 
@@ -59,6 +61,8 @@ class ModelConfig(ChoiceRegistry):
     finetune_max_grad_norm: float                           # Max Grad Norm (for global gradient clipping)
     finetune_lr_scheduler_type: str                         # LR Scheduler (default: "linear-warmup+cosine-decay")
     finetune_warmup_ratio: float                            # Fraction of total steps to warmup
+    finetune_beta1: float                                   # AdamW Beta1 (default: 0.9)
+    finetune_beta2: float                                   # AdamW Beta2 (default: 0.999)
 
     finetune_train_strategy: str                            # Finetune Train Strategy (default: "fsdp-full-shard")
 
@@ -96,6 +100,8 @@ class LLaVa_v15_Reproduction_7B(ModelConfig):
     align_max_grad_norm: float = 1.0
     align_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     align_warmup_ratio: float = 0.03
+    align_beta1: float = 0.9
+    align_beta2: float = 0.999
 
     align_train_strategy: str = "fsdp-shard-grad-op"
 
@@ -108,6 +114,8 @@ class LLaVa_v15_Reproduction_7B(ModelConfig):
     finetune_learning_rate: float = 2e-5
     finetune_weight_decay: float = 0.1
     finetune_max_grad_norm: float = 1.0
+    finetune_beta1: float = 0.9
+    finetune_beta2: float = 0.999
     finetune_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     finetune_warmup_ratio: float = 0.03
 
@@ -443,7 +451,7 @@ class Openlm_LLaVa(ModelConfig):
     model_id: str = "openlm"
     arch_specifier: str = "no-align+fused-gelu-mlp"
 
-    vision_backbone_id: str = "clip-vit-l-336px"
+    vision_backbone_id: str = "dinosiglip-vit-so-384px"
     llm_backbone_id: str = "openlm"
 
     image_resize_strategy: str = "letterbox"
@@ -460,6 +468,8 @@ class Openlm_LLaVa(ModelConfig):
     align_max_grad_norm: float = 1.0
     align_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     align_warmup_ratio: float = 0.03
+    align_beta1: float = 0.9
+    align_beta2: float = 0.95
 
     align_train_strategy: str = "fsdp-shard-grad-op"
 
@@ -474,6 +484,8 @@ class Openlm_LLaVa(ModelConfig):
     finetune_max_grad_norm: float = 1.0
     finetune_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     finetune_warmup_ratio: float = 0.03
+    finetune_beta1: float = 0.9
+    finetune_beta2: float = 0.95
 
     finetune_train_strategy: str = "fsdp-full-shard"
 

@@ -90,6 +90,7 @@ class PretrainConfig:
 
             self.learning_rate = self.model.align_learning_rate
             self.weight_decay = self.model.align_weight_decay
+            self.beta1, self.beta2 = self.model.align_beta1, self.model.align_beta2
             self.max_grad_norm = self.model.align_max_grad_norm
             self.lr_scheduler_type = self.model.align_lr_scheduler_type
             self.warmup_ratio = self.model.align_warmup_ratio
@@ -104,6 +105,7 @@ class PretrainConfig:
 
             self.learning_rate = self.model.finetune_learning_rate
             self.weight_decay = self.model.finetune_weight_decay
+            self.beta1, self.beta2 = self.model.finetune_beta1, self.model.finetune_beta2
             self.max_grad_norm = self.model.finetune_max_grad_norm
             self.lr_scheduler_type = self.model.finetune_lr_scheduler_type
             self.warmup_ratio = self.model.finetune_warmup_ratio
@@ -207,6 +209,8 @@ def pretrain(cfg: PretrainConfig) -> None:
         per_device_batch_size=cfg.per_device_batch_size,
         learning_rate=cfg.learning_rate,
         weight_decay=cfg.weight_decay,
+        beta1=cfg.beta1,
+        beta2=cfg.beta2,
         max_grad_norm=cfg.max_grad_norm,
         lr_scheduler_type=cfg.lr_scheduler_type,
         warmup_ratio=cfg.warmup_ratio,

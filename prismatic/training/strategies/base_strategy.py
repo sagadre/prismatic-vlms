@@ -42,6 +42,8 @@ class TrainingStrategy(ABC):
         per_device_batch_size: int,
         learning_rate: float,
         weight_decay: float,
+        beta1: float,
+        beta2: float,
         max_grad_norm: float,
         lr_scheduler_type: str,
         warmup_ratio: float,
@@ -63,6 +65,7 @@ class TrainingStrategy(ABC):
         self.global_batch_size, self.per_device_batch_size = global_batch_size, per_device_batch_size
 
         self.learning_rate, self.weight_decay, self.max_grad_norm = learning_rate, weight_decay, max_grad_norm
+        self.beta1, self.beta2 = beta1, beta2
         self.lr_scheduler_type, self.warmup_ratio = lr_scheduler_type, warmup_ratio
 
         # Generic Strategy Parameters

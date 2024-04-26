@@ -153,6 +153,10 @@ class OpenlmLLMBackbone(LLMBackbone):
         if not self.inference_mode:
             self.llm.enable_input_require_grads()
 
+        if open_lm_args.torchcompile:
+            overwatch.info("Compiling llm model with torch.compile", ctx_level=1)
+            self.llm.model = torch.compile(self.llm.model)
+
         # Load Tokenizer
         overwatch.info(f"Loading [bold]{self.llm_family}[/] GPTNeoXTokenizerFast", ctx_level=1)
         self.tokenizer = GPTNeoXTokenizerFast.from_pretrained(

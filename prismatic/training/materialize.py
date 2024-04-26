@@ -28,6 +28,8 @@ def get_train_strategy(
     per_device_batch_size: int,
     learning_rate: float,
     weight_decay: float,
+    beta1: float,
+    beta2: float,
     max_grad_norm: float,
     lr_scheduler_type: str,
     warmup_ratio: float,
