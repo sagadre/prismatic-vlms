@@ -51,7 +51,7 @@ class PretrainConfig:
 
     # ModelConfig (`prismatic/conf/models.py`); override with --model.type `ModelRegistry.<MODEL>.model_id`
     model: ModelConfig = field(
-        default_factory=ModelConfig.get_choice_class(ModelRegistry.EXT_EXP_MISTRAL_INSTRUCT_V1_7B.model_id)
+        default_factory=ModelConfig.get_choice_class(ModelRegistry.EXT_EXP_PHI_2_3B.model_id)
     )
 
     # DatasetConfig (`prismatic/conf/datasets.py`); override with --dataset.type `DatasetRegistry.<DATASET>.dataset_id`

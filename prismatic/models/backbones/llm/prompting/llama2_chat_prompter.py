@@ -36,7 +36,7 @@ class LLaMa2ChatPromptBuilder(PromptBuilder):
         self.bos, self.eos = "<s>", "</s>"
 
         # Get role-specific "wrap" functions
-        self.wrap_human = lambda msg: f"{self.bos}[INST] {msg} [/INST] "
+        self.wrap_human = lambda msg: f"[INST] {msg} [/INST] "
         self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===

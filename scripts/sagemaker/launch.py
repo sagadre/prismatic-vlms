@@ -42,10 +42,10 @@ class LaunchConfig:
 
     # Prismatic VLM Pretraining Parameters
     model_type: str = (                                                 # Unique Model ID (specifies config)
-        ModelRegistry.PRISM_DINOSIGLIP_224PX_7B.model_id
+        ModelRegistry.EXT_EXP_MISTRAL_V1_7B.model_id
     )
     dataset_type: str = (                                               # Unique Dataset ID (specifies config)
-        DatasetRegistry.LLAVA_LVIS4V_LRV.dataset_id
+        DatasetRegistry.LLAVA_V15.dataset_id
     )
 
     # Stage & Batch Size Parameters =>> Set dynamically based on instance count!
