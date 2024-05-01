@@ -112,16 +112,29 @@ class OpenlmLLMBackbone(LLMBackbone):
                 model_json[key] = open_lm_args.__dict__[key]
         for key in additional_keys:
             model_json[key] = open_lm_args.__dict__[key]
-        model_json["hidden_dim"] = temp_params.dim
-        model_json["n_layers"] = temp_params.n_layers
-        model_json["n_heads"] = temp_params.n_heads
-        model_json["post_embed_norm"] = temp_params.post_embed_norm
         model_json["weight_tying"] = temp_params.weight_tying
-        model_json["model_norm"] = open_lm_args.model_norm
+        model_json["seq_len"] = temp_params.seq_len
+        if hasattr(temp_params, "dim"):
+            model_json["hidden_dim"] = temp_params.dim
+            model_json["n_layers"] = temp_params.n_layers
+            model_json["n_heads"] = temp_params.n_heads
+            model_json["post_embed_norm"] = temp_params.post_embed_norm
+            model_json["model_norm"] = open_lm_args.model_norm
+        else:
+            model_json["d_model"] = temp_params.d_model
+            model_json["n_layer"] = temp_params.n_layer
+            model_json["vocab_size"] = temp_params.vocab_size
+            model_json["seq_len"] = temp_params.seq_len
+            model_json["rms_norm"] = temp_params.rms_norm
+            model_json["residual_in_fp32"] = temp_params.residual_in_fp32
+            model_json["fused_add_norm"] = temp_params.fused_add_norm
+            model_json["pad_vocab_size_multiple"] = temp_params.pad_vocab_size_multiple
+            model_json["weight_tying"] = temp_params.weight_tying
 
-        with open(llm_backbone_id + "/model_params.json", "w") as f:
+        model_name = open_lm_args.model
+        with open(f"{llm_backbone_id}/{model_name}.json", "w") as f:
             json.dump(model_json, f)
-        open_lm_args.model = llm_backbone_id + "/model_params.json"
+        open_lm_args.model = f"{llm_backbone_id}/{model_name}.json"
         ### end of hack
 
         self.llm_max_length = int(open_lm_args.seq_len)
@@ -182,6 +195,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
         # If the model comes from a Prismatic checkpoint this should be removed
         state_dict = {x.replace("llm.model.", ""): y for x, y in state_dict.items()}
+        state_dict = {x.replace("model.backbone.", ""): y for x, y in state_dict.items()}
         state_dict = {k: v for k, v in state_dict.items() if "inv_freq" not in k}
         # Load the state dict
         self.llm.model.load_state_dict(state_dict, strict=strict, assign=assign)
