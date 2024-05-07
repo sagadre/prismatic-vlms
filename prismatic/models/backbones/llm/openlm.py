@@ -6,11 +6,13 @@ Class definition for all LLMs derived from https://github.com/mlfoundations/open
 from functools import partial, cache
 from typing import Callable, List, Optional, Type
 import os
+import sys
 
 import torch
 from torch import nn as nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from composer.utils import dist, get_device
 import yaml
 import json
 import argparse
@@ -76,6 +78,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             ignore_keys = ["image_extractor", "image_projector"]
 
         super().__init__(llm_backbone_id)
+        # self.strange_input_logger = StrangeInputLogger()
         self.llm_family = "open_lm"
         self.inference_mode = inference_mode
 
@@ -110,6 +113,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         for key, value in temp_params.__dict__.items():
             if hasattr(open_lm_args, key):
                 model_json[key] = open_lm_args.__dict__[key]
+                temp_params.__dict__[key] = open_lm_args.__dict__[key]
         for key in additional_keys:
             model_json[key] = open_lm_args.__dict__[key]
         model_json["weight_tying"] = temp_params.weight_tying
@@ -252,6 +256,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        # self.strange_input_logger.log(output.loss, input_ids, inputs_embeds=inputs_embeds, labels=labels)
         return output
 
     @property
@@ -295,4 +300,33 @@ def get_projector_state_dict(llm_backbone_id: str) -> dict:
     projector_state_dict = {k: v for k, v in full_state_dict.items() if is_projector(k)}
     projector_state_dict = {k.replace("image_projector.", ""): v for k, v in projector_state_dict.items()}
     return projector_state_dict
-                             
+
+
+class StrangeInputLogger:
+    def __init__(self, output_path="strange_input", beta=0.9, rtol=0.5):
+        self.mean_loss = 0
+        self.beta = beta
+        self.rtol = rtol
+        self.output_path = output_path
+        self.counter = 0
+
+        dist.initialize_dist(get_device(None))
+        self.is_master = dist.get_global_rank() == 0
+
+    def log(self, loss, input, **kwargs):
+        self.counter += 1
+        if self.mean_loss == 0:
+            self.mean_loss = loss
+        else:
+            self.mean_loss = self.beta * self.mean_loss + (1 - self.beta) * loss
+        if abs(loss - self.mean_loss) / self.mean_loss > self.rtol:
+            self.write(input, loss, log_count=self.counter, **kwargs)
+
+    def write(self, input, loss, **kwargs):
+        if self.is_master:
+            with open(self.output_path, "a") as f:
+                torch.set_printoptions(threshold=sys.maxsize)  # Set print options to display the entire tensor
+                f.write(f"Input: {input}\n")
+                f.write(f"Loss: {loss}\n")
+                for k, v in kwargs.items():
+                    f.write(f"{k}: {v}\n")

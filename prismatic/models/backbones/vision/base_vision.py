@@ -51,11 +51,12 @@ class LetterboxPad:
 
 # === Abstract Base Class for arbitrary Vision Backbones ===
 class VisionBackbone(nn.Module, ABC):
-    def __init__(self, vision_backbone_id: str, image_resize_strategy: str, default_image_size: int = 224) -> None:
+    def __init__(self, vision_backbone_id: str, image_resize_strategy: str, default_image_size: int = 224, dino_first: bool = True) -> None:
         super().__init__()
         self.identifier: str = vision_backbone_id
         self.image_resize_strategy: str = image_resize_strategy
         self.default_image_size: int = default_image_size
+        self.dino_first = dino_first
 
         # Instance attributes for a Vision Backbone
         self.featurizer: nn.Module = None

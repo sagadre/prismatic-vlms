@@ -532,6 +532,8 @@ class PrismaticVLM(VLM):
                 if return_string_probabilities is None:
                     full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, **kwargs)
                     gen_ids = full_out_ids[0, input_ids.shape[1] :]
+                    eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+                    gen_ids = gen_ids[: eos_idx[0]] if len(eos_idx) > 0 else gen_ids
 
                     # Decode `gen_ids` and strip any <EOS> tokens
                     gen_texts.append(tokenizer.decode(gen_ids, skip_special_tokens=True).strip())
@@ -544,6 +546,8 @@ class PrismaticVLM(VLM):
                         return_dict_in_generate=True,
                         **kwargs,
                     )
+                    eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
+                    gen_ids = gen_ids[: eos_idx[0]] if len(eos_idx) > 0 else gen_ids
 
                     # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
                     gen_ids = full_out_dict.sequences[0, input_ids.shape[1] :]

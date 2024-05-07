@@ -104,7 +104,13 @@ class TrainingStrategy(ABC):
 
     @abstractmethod
     def clip_grad_norm(self) -> None: ...
-
+    
+    def _uniform_grad_type(self) -> None:
+        """Uniformly set the gradient type for all parameters in vlm"""
+        for param in self.vlm.parameters():
+            if param.grad is not None:
+                param.grad = param.grad.to(dtype=self.mixed_precision_dtype)
+            
     def run_training(
         self,
         dataset: Dataset,
@@ -156,6 +162,7 @@ class TrainingStrategy(ABC):
             self.epochs = 100
 
         # === Train ===
+        self._uniform_grad_type()
         status = metrics.get_status()
         with tqdm(
             total=(
