@@ -11,6 +11,7 @@ from prismatic import load
 from prismatic.models import get_llm_backbone_and_tokenizer, get_vision_backbone_and_transform, get_vlm
 from prismatic.models.backbones.llm.openlm import get_vision_state_dict, get_projector_state_dict
 
+from open_lm.utils.llm_foundry_wrapper import SimpleComposerOpenLMCausalLM
 
 
 def get_image_filenames(repo_owner, repo_name):
@@ -47,25 +48,27 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 
 # Load a pretrained VLM (either local path, or ID to auto-download from the HF Hub) 
 # model_id = "runs/dinosiglip_openlm_1b+stage-finetune+x7"
-model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
+model_id = "(openlm)llm_checkpoints/openlm_1b/"
 
 if model_id.startswith("runs"):
     vlm = load(model_id, cache_dir="vlm_checkpoints")
     vlm.to(device, dtype=torch.bfloat16)
-elif model_id.startswith("(openvlm)"):
+
+if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
+    # vision_backbone = vision_backbone.to(torch.bfloat16)
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         "dinosiglip-vit-so-384px",
         "resize-naive",
-        dino_first=False
+        dino_first=True
     )
-    vision_state_dict = get_vision_state_dict(model_id)
-    vision_backbone.load_state_dict(vision_state_dict)
-    # vision_backbone = vision_backbone.to(torch.bfloat16)
+    if model_id.startswith("(openvlm)"):
+        vision_state_dict = get_vision_state_dict(model_id)
+        vision_backbone.load_state_dict(vision_state_dict)
 
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         model_id,
         llm_max_length=1024,
-        inference_mode=True,
+        inference_mode=False,
     )
     # llm_backbone = llm_backbone.to(torch.bfloat16)
 
@@ -76,11 +79,11 @@ elif model_id.startswith("(openvlm)"):
         llm_backbone,
         enable_mixed_precision_training=False
     )
-    # vlm = vlm.to(torch.bfloat16)
 
-    projector_state_dict = get_projector_state_dict(model_id)
-    vlm.projector.load_state_dict(projector_state_dict)
-    # vlm.projector = vlm.projector.to(torch.bfloat16)
+    if model_id.startswith("(openvlm)"):
+        projector_state_dict = get_projector_state_dict(model_id)
+        vlm.projector.load_state_dict(projector_state_dict)
+
 
 
 # Download an image and specify a prompt
@@ -95,6 +98,14 @@ user_prompt = "What is going on in this image?"
 prompt_builder = vlm.get_prompt_builder()
 prompt_builder.add_turn(role="human", message=user_prompt)
 prompt_text = prompt_builder.get_prompt()
+
+input_ids = tokenizer(prompt_text, return_tensors="pt").input_ids
+# Test the LLM
+composer_model = SimpleComposerOpenLMCausalLM(vlm.llm_backbone.llm, tokenizer)
+output = composer_model.generate(input_ids, max_length=512, do_sample=True, temperature=0.8)
+output_text = tokenizer.decode(output[0], skip_special_tokens=True)
+print("Prompt:", user_prompt)
+print("Generated Text (no image input):", output_text)
 
 # Generate!
 generated_text = vlm.generate(
