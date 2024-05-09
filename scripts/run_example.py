@@ -100,6 +100,7 @@ if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
 source_image_owner = "EliSchwartz"
 source_image_repo_name = "imagenet-sample-images"
 image_url = get_random_image_url(get_image_filenames(source_image_owner, source_image_repo_name), source_image_owner, source_image_repo_name)
+print(f"Image URL: {image_url}")
 image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
 user_prompt = "This is a picture of a  "
 

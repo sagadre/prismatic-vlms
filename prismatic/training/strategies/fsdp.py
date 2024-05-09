@@ -241,7 +241,7 @@ class FSDPStrategy(TrainingStrategy):
             f"         |-> AdamW Weight Decay = {self.weight_decay}\n"
             f"         |-> AdamW Betas = ({self.beta1}, {self.beta2})\n"
             f"         |-> LR Scheduler Type = {self.lr_scheduler_type}\n"
-            f"         |-> LR Scheduler Warmup Steps (Ratio) = {num_warmup_stepsq} ({self.warmup_ratio})\n"
+            f"         |-> LR Scheduler Warmup Steps (Ratio) = {num_warmup_steps} ({self.warmup_ratio})\n"
             f"         |-> Dataset Size = {n_train_examples} Examples\n"
             f"         |-> Max Steps = {num_training_steps}\n"
         )
