@@ -138,8 +138,10 @@ class DinoSigLIPViTBackbone(VisionBackbone):
         """Runs the transformed image/pixel tensors through each vision backbone, returning concatenated patches."""
         dino_patches = self.dino_featurizer(pixel_values["dino"])
         siglip_patches = self.siglip_featurizer(pixel_values["siglip"])
-
-        return torch.cat([dino_patches, siglip_patches], dim=2)
+        if self.dino_first:
+            return torch.cat([dino_patches, siglip_patches], dim=2)
+        else:
+            return torch.cat([siglip_patches, dino_patches], dim=2)
 
     @property
     def default_image_resolution(self) -> Tuple[int, int, int]:

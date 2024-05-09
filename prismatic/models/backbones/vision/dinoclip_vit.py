@@ -125,8 +125,10 @@ class DinoCLIPViTBackbone(VisionBackbone):
         """Runs the transformed image/pixel tensors through each vision backbone, returning concatenated patches."""
         dino_patches = self.dino_featurizer(pixel_values["dino"])
         clip_patches = self.clip_featurizer(pixel_values["clip"])
-
-        return torch.cat([dino_patches, clip_patches], dim=2)
+        if self.dino_first:
+            return torch.cat([dino_patches, clip_patches], dim=2)
+        else:
+            return torch.cat([clip_patches, dino_patches], dim=2)
 
     @property
     def default_image_resolution(self) -> Tuple[int, int, int]:

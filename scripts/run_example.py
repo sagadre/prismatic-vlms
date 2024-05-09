@@ -48,20 +48,25 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 
 # Load a pretrained VLM (either local path, or ID to auto-download from the HF Hub) 
 # model_id = "runs/dinosiglip_openlm_1b+stage-finetune+x7"
-model_id = "(openlm)llm_checkpoints/openlm_1b/"
+# model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
+# model_id = "runs/200_steps_dinosiglip_openlm_1b+stage-finetune+x7"
+model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
 
 if model_id.startswith("runs"):
     vlm = load(model_id, cache_dir="vlm_checkpoints")
     vlm.to(device, dtype=torch.bfloat16)
+    vlm = vlm.to(device)
+    tokenizer = vlm.llm_backbone.get_tokenizer()
 
 if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
     # vision_backbone = vision_backbone.to(torch.bfloat16)
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         "dinosiglip-vit-so-384px",
         "resize-naive",
-        dino_first=True
+        dino_first=not model_id.startswith("(openvlm)")
     )
     if model_id.startswith("(openvlm)"):
+        print("Loading vision state dict")
         vision_state_dict = get_vision_state_dict(model_id)
         vision_backbone.load_state_dict(vision_state_dict)
 
@@ -70,7 +75,8 @@ if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
         llm_max_length=1024,
         inference_mode=False,
     )
-    # llm_backbone = llm_backbone.to(torch.bfloat16)
+    # llm_backbone = llm_backbone.to(dtype=torch.bfloat16)
+    llm_backbone = llm_backbone.to(device)
 
     vlm = get_vlm(
         model_id,
@@ -81,8 +87,11 @@ if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
     )
 
     if model_id.startswith("(openvlm)"):
+        print("Loading projector state dict")
         projector_state_dict = get_projector_state_dict(model_id)
         vlm.projector.load_state_dict(projector_state_dict)
+    
+    vlm.to(device, dtype=torch.bfloat16)
 
 
 
@@ -92,18 +101,18 @@ source_image_owner = "EliSchwartz"
 source_image_repo_name = "imagenet-sample-images"
 image_url = get_random_image_url(get_image_filenames(source_image_owner, source_image_repo_name), source_image_owner, source_image_repo_name)
 image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
-user_prompt = "What is going on in this image?"
+user_prompt = "This is a picture of a  "
 
 # Build prompt
 prompt_builder = vlm.get_prompt_builder()
 prompt_builder.add_turn(role="human", message=user_prompt)
 prompt_text = prompt_builder.get_prompt()
 
-input_ids = tokenizer(prompt_text, return_tensors="pt").input_ids
+input_ids = tokenizer(prompt_text, return_tensors="pt").input_ids.to(device)
 # Test the LLM
 composer_model = SimpleComposerOpenLMCausalLM(vlm.llm_backbone.llm, tokenizer)
-output = composer_model.generate(input_ids, max_length=512, do_sample=True, temperature=0.8)
-output_text = tokenizer.decode(output[0], skip_special_tokens=True)
+output = composer_model.generate(input_ids, max_length=512, do_sample=True, temperature=0.8, top_p=0.95)
+output_text = tokenizer.decode(output[0, input_ids.shape[1] :])
 print("Prompt:", user_prompt)
 print("Generated Text (no image input):", output_text)
 
