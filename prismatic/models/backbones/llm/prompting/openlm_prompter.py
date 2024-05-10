@@ -13,10 +13,10 @@ class OpenlmPromptBuilder(PromptBuilder):
         self.system_prompt = "" # base
 
         # neox tokenization specific
-        self.bos, self.eos = "", "<|endoftext|>"
+        self.bos, self.eos, self.task = "", "<|endoftext|>", "<TASK>"
 
         # Get role-specific "wrap" functions
-        self.wrap_human = lambda msg: msg #f"{self.bos}[INST] {msg} [/INST] "
+        self.wrap_human = lambda msg: msg+self.task #f"{self.bos}[INST] {msg} [/INST] "
         self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===

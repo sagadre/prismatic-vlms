@@ -151,7 +151,7 @@ class TrainingStrategy(ABC):
             batch_size=self.per_device_batch_size,
             sampler=sampler,
             collate_fn=collator,
-            num_workers=2,
+            num_workers=4,
             worker_init_fn=self.worker_init_fn,
         )
 
