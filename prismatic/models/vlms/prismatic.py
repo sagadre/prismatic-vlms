@@ -532,8 +532,9 @@ class PrismaticVLM(VLM):
                     full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, **kwargs)
                     gen_ids = full_out_ids[0, input_ids.shape[1] :]
                     eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
-                    gen_ids = gen_ids[: eos_idx[0]] if len(eos_idx) > 0 else gen_ids
-
+                    turn_idx = gen_ids.eq(tokenizer.turn_token_id).nonzero(as_tuple=True)[0]
+                    end_idx = min(eos_idx[0], turn_idx[0]) if len(eos_idx) > 0 and len(turn_idx) > 0 else len(gen_ids)
+                    gen_ids = gen_ids[: end_idx]
                     # Decode `gen_ids` and strip any <EOS> tokens
                     gen_texts.append(tokenizer.decode(gen_ids, skip_special_tokens=True).strip())
 
@@ -546,7 +547,9 @@ class PrismaticVLM(VLM):
                         **kwargs,
                     )
                     eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
-                    gen_ids = gen_ids[: eos_idx[0]] if len(eos_idx) > 0 else gen_ids
+                    turn_idx = gen_ids.eq(tokenizer.turn_token_id).nonzero(as_tuple=True)[0]
+                    end_idx = min(eos_idx[0], turn_idx[0]) if len(eos_idx) > 0 and len(turn_idx) > 0 else len(gen_ids)
+                    gen_ids = gen_ids[: end_idx]
 
                     # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
                     gen_ids = full_out_dict.sequences[0, input_ids.shape[1] :]

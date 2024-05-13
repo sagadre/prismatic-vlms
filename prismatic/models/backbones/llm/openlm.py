@@ -60,31 +60,56 @@ class CustomTokenizer(GPTNeoXTokenizerFast):
         super().__init__(*args, **kwargs)
     
     def add_tokens_at_index(self, new_tokens, indices, special_tokens=False):
+        # Keep track of the mapping between the new token names and the indices
+        self._name_to_replaced.update({k: indices[i] for i, k in enumerate(new_tokens.keys())})
+
         if special_tokens:
+            new_special_tokens = {}
+            new_tokens_copy = new_tokens.copy()
+            for k, v in new_tokens_copy.items():
+                if k not in self.SPECIAL_TOKENS_ATTRIBUTES:
+                    new_special_tokens[k] = v
+                    new_tokens.pop(k)
+            new_tokens["additional_special_tokens"] = list(new_special_tokens.values())
             self.add_special_tokens(new_tokens)
+            self.add_tokens(list(new_special_tokens.values()))
         else:
             self.add_tokens(new_tokens)
         encoded = []
         for v in new_tokens.values():
-            encoded += self.encode(v)
+            if isinstance(v, str):
+                encoded += self.encode(v)
+            elif isinstance(v, list):
+                encoded += [self.encode(x)[0] for x in v]
+            else:
+                raise ValueError("Values should be strings or lists of strings")
+
+        # Keep track of the mapping between the actual token indices and the indices wanted Sby the user
         self.encoded_to_replaced.update({e: r for e, r in zip(encoded, indices)})
         self.replaced_to_encoded.update({r: e for e, r in zip(encoded, indices)})
-        self._name_to_replaced.update({k: indices[i] for i, k in enumerate(new_tokens.keys())})
-        
+
     def __call__(self, text, *args, **kwargs):
         ids = self.encode(text, *args, **kwargs)
         out = super().__call__(text, *args, **kwargs)
         out.input_ids = ids
         return out
-        
+
     def encode(self, text, *args, **kwargs):
         encoded = super().encode(text, *args, **kwargs)
-        return [self.encoded_to_replaced.get(token, token) for token in encoded]
-    
+        if isinstance(encoded, torch.Tensor):
+            # iterate over the output tensor and replace the tokens
+            for i in range(encoded.size(0)):
+                for j in range(encoded.size(1)):
+                    encoded[i, j] = self.encoded_to_replaced.get(encoded[i, j].item(), encoded[i, j].item())
+            replaced_tok = encoded
+        else:
+            replaced_tok = [self.encoded_to_replaced.get(token, token) for token in encoded]
+        return replaced_tok
+
     def decode(self, token_ids: int | List[int] | ndarray | torch.Tensor | Any, skip_special_tokens: bool = False, clean_up_tokenization_spaces: bool = None, **kwargs) -> str:
         token_ids = [self.replaced_to_encoded.get(token, token) for token in token_ids]
         return super().decode(token_ids, skip_special_tokens, clean_up_tokenization_spaces, **kwargs)
-    
+
     def __getattribute__(self, __name: str) -> Any:
         if len(__name)>3 and __name[-3:]=="_id" and __name[:-3] in self._name_to_replaced:
             return self._name_to_replaced[__name[:-3]]   
@@ -231,7 +256,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         assert self.tokenizer.padding_side == "right", "Tokenizer `padding_side` is not set to `right`!"
 
         # add pad token, note gptneox has vocab size of 50257, but open_lm by default has an lm_head with size 50432
-        self.tokenizer.add_tokens_at_index({"pad_token": "<PAD>", "sep_token": "<TASK>"}, [50400, 50300], special_tokens=True)
+        self.tokenizer.add_tokens_at_index({"pad_token": "<PAD>", "sep_token": "<TASK>", "turn_token": "<TURN>"}, [50400, 50300, 50350], special_tokens=True)
         # self.tokenizer.add_special_tokens({"pad_token": "<PAD>", "sep_token": "<TASK>"})
         # self.tokenizer.vocab["<PAD>"] = 50400
         # self.tokenizer.vocab["<TASK>"] = 50300
