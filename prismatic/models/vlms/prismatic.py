@@ -546,13 +546,12 @@ class PrismaticVLM(VLM):
                         return_dict_in_generate=True,
                         **kwargs,
                     )
+                    # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
+                    gen_ids = full_out_dict.sequences[0, input_ids.shape[1] :]
                     eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
                     turn_idx = gen_ids.eq(tokenizer.turn_token_id).nonzero(as_tuple=True)[0]
                     end_idx = min(eos_idx[0], turn_idx[0]) if len(eos_idx) > 0 and len(turn_idx) > 0 else len(gen_ids)
                     gen_ids = gen_ids[: end_idx]
-
-                    # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
-                    gen_ids = full_out_dict.sequences[0, input_ids.shape[1] :]
 
                     # [Debug] Verify that the first token generated is in `self.string2idx.values()`
                     # assert gen_ids[0] in self.string2idx.values(), "Generated ID not in mapping!"
