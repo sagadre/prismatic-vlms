@@ -501,15 +501,16 @@ class PrismaticVLM(VLM):
     ) -> Union[List[str], List[List[float]]]:
         # For now, only support generation with a batch size of 1 for simplicity
         tokenizer = self.llm_backbone.tokenizer
+        autocast_dtype = self.llm_backbone.half_precision_dtype
 
         # Prepare Inputs
         batch_input_ids = [
             tokenizer(text, truncation=True, return_tensors="pt").input_ids.to(self.device) for text in texts
         ]
         if isinstance(pixel_values, torch.Tensor):
-            pixel_values = pixel_values[None, ...].to(self.device)
+            pixel_values = pixel_values[None, ...].to(self.device, dtype=autocast_dtype)
         elif isinstance(pixel_values, dict):
-            pixel_values = {k: v[None, ...].to(self.device) for k, v in pixel_values.items()}
+            pixel_values = {k: v[None, ...].to(self.device, dtype=autocast_dtype) for k, v in pixel_values.items()}
         else:
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
 
@@ -517,7 +518,6 @@ class PrismaticVLM(VLM):
         gen_texts, gen_probabilities = [], []
 
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
-        autocast_dtype = self.llm_backbone.half_precision_dtype
         with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
             for idx, input_ids in enumerate(batch_input_ids):
                 if isinstance(pixel_values, torch.Tensor):
