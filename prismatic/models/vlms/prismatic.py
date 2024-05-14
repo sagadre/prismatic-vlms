@@ -110,6 +110,8 @@ class PrismaticVLM(VLM):
 
         vlm.projector.load_state_dict(model_state_dict["projector"], strict=strict)
         vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"], strict=strict)
+        if "vision_backbone" in model_state_dict:
+            vlm.vision_backbone.load_state_dict(model_state_dict["vision_backbone"], strict=strict)
 
         # Freeze Weights
         vlm.requires_grad_(False)

@@ -109,7 +109,7 @@ class FSDPStrategy(TrainingStrategy):
         with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy):
             full_vlm_state_dict = self.vlm.state_dict()
             model_state_dicts = {
-                mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
+                mkey: OrderedDict() for mkey in self.all_module_keys
             }
 
             # Iterate through `full_vlm_state_dict` and split `mkey.{full_dotted_path}` -> `mkey: {full_dotted_path}`

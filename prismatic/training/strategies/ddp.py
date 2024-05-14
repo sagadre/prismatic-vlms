@@ -37,7 +37,7 @@ class DDPStrategy(TrainingStrategy):
         # Splinter State Dictionary by Top-Level Submodules (or subset, if `only_trainable`)
         model_state_dicts = {
             mkey: getattr(self.vlm.module, mkey).state_dict()
-            for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
+            for mkey in self.all_module_keys
         }
         optimizer_state_dict = self.optimizer.state_dict()
 
