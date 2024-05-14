@@ -55,7 +55,8 @@ def load(
         # Get paths for `config.json` and pretrained checkpoint
         assert (config_json := run_dir / "config.json").exists(), f"Missing `config.json` for `{run_dir = }`"
         assert (checkpoint_pt := run_dir / "checkpoints" / "latest-checkpoint.pt").exists(), "Missing checkpoint!"
-    elif model_id_or_path.startswith("(openlm)") or model_id_or_path.startswith("(openvlm)"):
+    elif str(model_id_or_path).startswith("(openlm)") or str(model_id_or_path).startswith("(openvlm)"):
+        model_id_or_path = str(model_id_or_path)
         vision_backbone, image_transform = get_vision_backbone_and_transform(
             "dinosiglip-vit-so-384px",
             "resize-naive",

@@ -17,7 +17,7 @@ class OpenlmPromptBuilder(PromptBuilder):
 
         # Get role-specific "wrap" functions
         self.wrap_human = lambda msg: msg+self.task #f"{self.bos}[INST] {msg} [/INST] "
-        self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.turn}"
+        self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===
         self.prompt, self.turn_count = "", 0
