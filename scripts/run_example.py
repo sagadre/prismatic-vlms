@@ -52,47 +52,10 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 # model_id = "runs/200_steps_dinosiglip_openlm_1b+stage-finetune+x7"
 model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
 
-if model_id.startswith("runs"):
-    vlm = load(model_id, cache_dir="vlm_checkpoints")
-    vlm.to(device, dtype=torch.bfloat16)
-    vlm = vlm.to(device)
-    tokenizer = vlm.llm_backbone.get_tokenizer()
-
-if model_id.startswith("(openlm)") or model_id.startswith("(openvlm)"):
-    # vision_backbone = vision_backbone.to(torch.bfloat16)
-    vision_backbone, image_transform = get_vision_backbone_and_transform(
-        "dinosiglip-vit-so-384px",
-        "resize-naive",
-        dino_first=not model_id.startswith("(openvlm)")
-    )
-    if model_id.startswith("(openvlm)"):
-        print("Loading vision state dict")
-        vision_state_dict = get_vision_state_dict(model_id)
-        vision_backbone.load_state_dict(vision_state_dict)
-
-    llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
-        model_id,
-        llm_max_length=1024,
-        inference_mode=False,
-    )
-    # llm_backbone = llm_backbone.to(dtype=torch.bfloat16)
-    llm_backbone = llm_backbone.to(device)
-
-    vlm = get_vlm(
-        model_id,
-        "no-align+fused-gelu-mlp",
-        vision_backbone,
-        llm_backbone,
-        enable_mixed_precision_training=False
-    )
-
-    if model_id.startswith("(openvlm)"):
-        print("Loading projector state dict")
-        projector_state_dict = get_projector_state_dict(model_id)
-        vlm.projector.load_state_dict(projector_state_dict)
-    
-    vlm.to(device, dtype=torch.bfloat16)
-
+vlm = load(model_id, cache_dir="vlm_checkpoints")
+vlm.to(device, dtype=torch.bfloat16)
+vlm = vlm.to(device)
+tokenizer = vlm.llm_backbone.get_tokenizer()
 
 
 # Download an image and specify a prompt

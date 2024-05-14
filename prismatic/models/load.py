@@ -11,7 +11,8 @@ from typing import List, Optional, Union
 
 from huggingface_hub import hf_hub_download
 
-from prismatic.models.materialize import get_llm_backbone_and_tokenizer, get_vision_backbone_and_transform
+from prismatic.models.materialize import get_llm_backbone_and_tokenizer, get_vision_backbone_and_transform, get_vlm
+from prismatic.models.backbones.llm.openlm import get_vision_state_dict, get_projector_state_dict
 from prismatic.models.registry import GLOBAL_REGISTRY, MODEL_REGISTRY
 from prismatic.models.vlms import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
@@ -54,6 +55,36 @@ def load(
         # Get paths for `config.json` and pretrained checkpoint
         assert (config_json := run_dir / "config.json").exists(), f"Missing `config.json` for `{run_dir = }`"
         assert (checkpoint_pt := run_dir / "checkpoints" / "latest-checkpoint.pt").exists(), "Missing checkpoint!"
+    elif model_id_or_path.startswith("(openlm)") or model_id_or_path.startswith("(openvlm)"):
+        vision_backbone, image_transform = get_vision_backbone_and_transform(
+            "dinosiglip-vit-so-384px",
+            "resize-naive",
+            dino_first=not model_id_or_path.startswith("(openvlm)")
+        )
+        if model_id_or_path.startswith("(openvlm)"):
+            print("Loading vision state dict")
+            vision_state_dict = get_vision_state_dict(model_id_or_path)
+            vision_backbone.load_state_dict(vision_state_dict)
+
+        llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
+            model_id_or_path,
+            llm_max_length=1024,
+            inference_mode=False,
+        )
+
+        vlm = get_vlm(
+            model_id_or_path,
+            "no-align+fused-gelu-mlp",
+            vision_backbone,
+            llm_backbone,
+            enable_mixed_precision_training=False
+        )
+
+        if model_id_or_path.startswith("(openvlm)"):
+            print("Loading projector state dict")
+            projector_state_dict = get_projector_state_dict(model_id_or_path)
+            vlm.projector.load_state_dict(projector_state_dict)
+        return vlm
     else:
         if model_id_or_path not in GLOBAL_REGISTRY:
             raise ValueError(f"Couldn't find `{model_id_or_path = }; check `prismatic.available_model_names()`")
