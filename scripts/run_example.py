@@ -2,14 +2,11 @@ import requests
 import torch
 
 from PIL import Image
-from pathlib import Path
 import random
 import requests
 from matplotlib import pyplot as plt
 
 from prismatic import load
-from prismatic.models import get_llm_backbone_and_tokenizer, get_vision_backbone_and_transform, get_vlm
-from prismatic.models.backbones.llm.openlm import get_vision_state_dict, get_projector_state_dict
 
 from open_lm.utils.llm_foundry_wrapper import SimpleComposerOpenLMCausalLM
 

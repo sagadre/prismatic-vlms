@@ -108,9 +108,12 @@ class PrismaticVLM(VLM):
             "projector" in model_state_dict and "llm_backbone" in model_state_dict
         ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
 
+        overwatch.info(f"    Loading Projector weights from checkpoint [bold]{pretrained_checkpoint}[/]")
         vlm.projector.load_state_dict(model_state_dict["projector"], strict=strict)
+        overwatch.info(f"    Loading LLM weights from checkpoint [bold]{pretrained_checkpoint}[/]")
         vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"], strict=strict)
         if "vision_backbone" in model_state_dict:
+            overwatch.info(f"    Loading Vision Backbone weights from checkpoint [bold]{pretrained_checkpoint}[/]")
             vlm.vision_backbone.load_state_dict(model_state_dict["vision_backbone"], strict=strict)
 
         # Freeze Weights

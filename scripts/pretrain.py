@@ -147,9 +147,9 @@ def pretrain(cfg: PretrainConfig) -> None:
 
     # Load Vision Backbone --> on CPU, in Full Precision (initializing model, image_transform via TIMM)
     overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")
-    dino_first = not cfg.model.llm_backbone_id.startswith("(openvlm)")
+    not_openvlm = not cfg.model.llm_backbone_id.startswith("(openvlm)")
     vision_backbone, image_transform = get_vision_backbone_and_transform(
-        cfg.model.vision_backbone_id, image_resize_strategy=cfg.model.image_resize_strategy, dino_first=dino_first
+        cfg.model.vision_backbone_id, image_resize_strategy=cfg.model.image_resize_strategy, dino_first=not_openvlm, pretrained=not_openvlm
     )
 
     load_from = cfg.pretrained_checkpoint

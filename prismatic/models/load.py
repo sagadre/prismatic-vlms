@@ -57,10 +57,12 @@ def load(
         assert (checkpoint_pt := run_dir / "checkpoints" / "latest-checkpoint.pt").exists(), "Missing checkpoint!"
     elif str(model_id_or_path).startswith("(openlm)") or str(model_id_or_path).startswith("(openvlm)"):
         model_id_or_path = str(model_id_or_path)
+        not_from_pretrained_vlm = not model_id_or_path.startswith("(openvlm)")
         vision_backbone, image_transform = get_vision_backbone_and_transform(
             "dinosiglip-vit-so-384px",
             "resize-naive",
-            dino_first=not model_id_or_path.startswith("(openvlm)")
+            dino_first=not_from_pretrained_vlm,
+            pretrained=not_from_pretrained_vlm
         )
         if model_id_or_path.startswith("(openvlm)"):
             print("Loading vision state dict")
@@ -111,14 +113,15 @@ def load(
     )
 
     # Load Vision Backbone
-    overwatch.info(f"Loading Vision Backbone [bold]{model_cfg['vision_backbone_id']}[/]")
+    overwatch.info(f"Creating Vision Backbone [bold]{model_cfg['vision_backbone_id']}[/]")
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         model_cfg["vision_backbone_id"],
         model_cfg["image_resize_strategy"],
+        # pretrained=False,  # We cannot really know if the vision backbone should be loaded or not here, the weight might or might not be in the checkpoint
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
-    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/]")
+    overwatch.info(f"Creating Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/]")
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         model_cfg["llm_backbone_id"],
         llm_max_length=model_cfg.get("llm_max_length", 2048),

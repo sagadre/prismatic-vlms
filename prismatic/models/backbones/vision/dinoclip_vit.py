@@ -36,19 +36,19 @@ class DinoCLIPImageTransform:
 
 
 class DinoCLIPViTBackbone(VisionBackbone):
-    def __init__(self, vision_backbone_id: str, image_resize_strategy: str, default_image_size: int = 224, dino_first: bool = True) -> None:
+    def __init__(self, vision_backbone_id: str, image_resize_strategy: str, default_image_size: int = 224, dino_first: bool = True, pretrained : bool = True) -> None:
         super().__init__(vision_backbone_id, image_resize_strategy, default_image_size=default_image_size, dino_first=dino_first)
         self.dino_timm_path_or_url = DINOCLIP_VISION_BACKBONES[vision_backbone_id]["dino"]
         self.clip_timm_path_or_url = DINOCLIP_VISION_BACKBONES[vision_backbone_id]["clip"]
 
         # Initialize both Featurizers (ViTs) by downloading from HF / TIMM Hub if necessary
         self.dino_featurizer: VisionTransformer = timm.create_model(
-            self.dino_timm_path_or_url, pretrained=True, num_classes=0, img_size=self.default_image_size
+            self.dino_timm_path_or_url, pretrained=pretrained, num_classes=0, img_size=self.default_image_size
         )
         self.dino_featurizer.eval()
 
         self.clip_featurizer: VisionTransformer = timm.create_model(
-            self.clip_timm_path_or_url, pretrained=True, num_classes=0, img_size=self.default_image_size
+            self.clip_timm_path_or_url, pretrained=pretrained, num_classes=0, img_size=self.default_image_size
         )
         self.clip_featurizer.eval()
 
