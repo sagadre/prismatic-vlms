@@ -58,7 +58,7 @@ class LLaVa_Multimodal_Only_Config(DatasetConfig):
         Path("download/llava-v1.5-instruct/llava_v1_5_stripped625k.json"),
         Path("download/llava-v1.5-instruct/"),
     )
-    dataset_root_dir: Path = Path("/mnt/fsx/skaramcheti/datasets/prismatic-vlms")
+    dataset_root_dir: Path = Path("data")
 
 
 # LLaVa-v15 + LVIS-Instruct-4V
@@ -74,7 +74,7 @@ class LLaVa_LVIS4V_Config(DatasetConfig):
         Path("download/llava-v1.5-instruct/llava_v1_5_lvis4v_mix888k.json"),
         Path("download/llava-v1.5-instruct/"),
     )
-    dataset_root_dir: Path = Path("/mnt/fsx/skaramcheti/datasets/prismatic-vlms")
+    dataset_root_dir: Path = Path("data")
 
 
 # LLaVa-v15 + LRV-Instruct
@@ -90,7 +90,7 @@ class LLaVa_LRV_Config(DatasetConfig):
         Path("download/llava-v1.5-instruct/llava_v1_5_lrv_mix1008k.json"),
         Path("download/llava-v1.5-instruct/"),
     )
-    dataset_root_dir: Path = Path("/mnt/fsx/skaramcheti/datasets/prismatic-vlms")
+    dataset_root_dir: Path = Path("data")
 
 
 # LLaVa-v15 + LVIS-Instruct-4V + LRV-Instruct
@@ -106,7 +106,38 @@ class LLaVa_LVIS4V_LRV_Config(DatasetConfig):
         Path("download/llava-v1.5-instruct/llava_v1_5_lvis4v_lrv_mix1231k.json"),
         Path("download/llava-v1.5-instruct/"),
     )
-    dataset_root_dir: Path = Path("/mnt/fsx/skaramcheti/datasets/prismatic-vlms")
+    dataset_root_dir: Path = Path("data")
+
+@dataclass
+class MMWAND_Config(DatasetConfig):
+    dataset_id: str = "mmwand"
+
+    align_stage_components: Tuple[Path, Path] = (
+        None,
+        None,
+    )
+    finetune_stage_components: Tuple[Path, Path] = (
+        Path("download/mmwand/prismatic_annotation.json"),
+        Path("download/mmwand/"),
+    )
+    background_image_path: str = "download/llava-v1.5-instruct/coco/train2017/*.jpg"
+    dataset_root_dir: Path = Path("data")
+
+
+@dataclass
+class MMWAND_LLaVa_mix_Config(DatasetConfig):
+    dataset_id: str = "mmwand_llava_mix"
+
+    align_stage_components: Tuple[Path, Path] = (
+        None,
+        None,
+    )
+    finetune_stage_components: Tuple[Path, Path] = (
+        Path("download/mmwand_llava_v1_5_mix688k.json"),
+        Path("download/"),
+    )
+    background_image_path: str = "download/llava-v1.5-instruct/coco/train2017/*.jpg"
+    dataset_root_dir: Path = Path("data")
 
 
 # === Define a Dataset Registry Enum for Reference & Validation =>> all *new* datasets must be added here! ===
@@ -121,6 +152,9 @@ class DatasetRegistry(Enum):
     LLAVA_LRV = LLaVa_LRV_Config
 
     LLAVA_LVIS4V_LRV = LLaVa_LVIS4V_LRV_Config
+
+    MMWAND = MMWAND_Config
+    MMWAND_LLAVA_MIX = MMWAND_LLaVa_mix_Config
 
     @property
     def dataset_id(self) -> str:

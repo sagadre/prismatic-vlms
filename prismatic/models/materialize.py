@@ -118,6 +118,7 @@ def get_vlm(
     vision_backbone: VisionBackbone,
     llm_backbone: LLMBackbone,
     enable_mixed_precision_training: bool = True,
+    touch_arch_specifier: Optional[str] = None,
 ) -> PrismaticVLM:
     """Lightweight wrapper around initializing a VLM, mostly for future-proofing (if one wants to add a new VLM)."""
     return PrismaticVLM(
@@ -126,4 +127,5 @@ def get_vlm(
         llm_backbone,
         enable_mixed_precision_training=enable_mixed_precision_training,
         arch_specifier=arch_specifier,
+        touch_arch_specifier=touch_arch_specifier,
     )

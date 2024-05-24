@@ -14,6 +14,7 @@ from __future__ import annotations
 from functools import partial
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
+import torch.distributed as dist
 
 import torch
 from PIL import Image
@@ -27,6 +28,8 @@ from prismatic.models.backbones.llm.openlm import get_projector_state_dict
 from prismatic.models.vlms.base_vlm import VLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.util.nn_utils import FusedMLPProjector, LinearProjector, MLPProjector
+from prismatic.util.torch_utils import get_autocast
+
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -44,6 +47,7 @@ class PrismaticVLM(VLM):
         llm_backbone: LLMBackbone,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
+        touch_arch_specifier: Optional[str] = None,
     ) -> None:
         super().__init__(
             "prismatic",
@@ -66,12 +70,29 @@ class PrismaticVLM(VLM):
             self.projector = MLPProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
         else:
             raise ValueError(f"PrismaticVLM with `{arch_specifier = }` is not supported!")
+        
+        # Set Module Keys =>> used in Checkpoint Saving / Model Loading
+        self.all_module_keys = ["vision_backbone", "llm_backbone", "projector"]
+       
+        # === Touch Arch Specifier ===
+        #   => If `touch_arch_specifier` is provided, we'll use a separate projector for touch data
+        if touch_arch_specifier is not None:
+            if touch_arch_specifier == "linear":
+                self.touch_projector = LinearProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
+            elif touch_arch_specifier.endswith("fused-gelu-mlp"):
+                self.touch_projector = FusedMLPProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
+            elif touch_arch_specifier.endswith("gelu-mlp"):
+                self.touch_projector = MLPProjector(vision_backbone.embed_dim, llm_backbone.embed_dim)
+            else:
+                raise ValueError(f"PrismaticVLM with `{touch_arch_specifier = }` is not supported!")
+            
+            self.all_module_keys.append("touch_projector")
+        else:
+            self.touch_projector = None
 
         # Trackers
         self.vision_backbone_requires_grad = False
 
-        # Set Module Keys =>> used in Checkpoint Saving / Model Loading
-        self.all_module_keys = ["vision_backbone", "llm_backbone", "projector"]
         self.trainable_module_keys = []
 
         # === Generation Utilities ===
@@ -194,10 +215,10 @@ class PrismaticVLM(VLM):
 
         # If we're running a `no-align` architecture, we're good!
         if self.arch_specifier.startswith("no-align"):
-            overwatch.info(
-                f"PrismaticVLM with `{self.arch_specifier = }` does not require pretrained weights!", ctx_level=1
-            )
             if pretrained_checkpoint is None or not pretrained_checkpoint.startswith("(openvlm)"):
+                overwatch.info(
+                    f"PrismaticVLM with `{self.arch_specifier = }` does not require pretrained weights!", ctx_level=1
+                )
                 # If we're not using OpenVLM, we don't need to load the projectors from it
                 return
 
@@ -219,7 +240,7 @@ class PrismaticVLM(VLM):
                 model_state_dict = torch.load(pretrained_checkpoint)["model"]
                 projector_state_dict = model_state_dict["projector"]
 
-            self.projector.load_state_dict(projector_state_dict)
+            self.projector.load_state_dict(projector_state_dict, strict=True)
             return
 
         # [Contract] If no `pretrained_checkpoint`, assume `align` lives in the run directory; string substitution!
@@ -233,7 +254,7 @@ class PrismaticVLM(VLM):
         if (pretrained_checkpoint := (align_dirs[0] / "checkpoints" / "latest-checkpoint.pt")).exists():
             overwatch.info(f"Loading from Discovered Checkpoint `{pretrained_checkpoint}`", ctx_level=1)
             model_state_dict = torch.load(pretrained_checkpoint)["model"]
-            self.projector.load_state_dict(model_state_dict["projector"])
+            self.projector.load_state_dict(model_state_dict["projector"], strict=True)
         else:
             raise ValueError(f"Could not find valid `align` checkpoint at {pretrained_checkpoint}!")
 
@@ -269,6 +290,7 @@ class PrismaticVLM(VLM):
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
+        touch_pixel_values: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -319,13 +341,33 @@ class PrismaticVLM(VLM):
 
         # Run Visual Feature Extraction
         with torch.set_grad_enabled(self.vision_backbone_requires_grad):
-            if isinstance(pixel_values, dict):
-                patch_features = self.vision_backbone({k: pixel_values[k][multimodal_indices] for k in pixel_values})
+            if touch_pixel_values is not None:  # Multimodal with Touch
+                if isinstance(pixel_values, dict):
+                    combined_pixel_values = {k: torch.cat([pixel_values[k][multimodal_indices], touch_pixel_values[k][multimodal_indices]], dim=0) for k in pixel_values.keys()}
+                    combined_features = self.vision_backbone(combined_pixel_values)
+                    patch_features, touch_features = combined_features.split(combined_features.shape[0] // 2, dim=0)
+                else: # TODO: Test this branch
+                    combined_pixel_values = torch.cat([pixel_values[multimodal_indices], touch_pixel_values[multimodal_indices]], dim=0)
+                    combined_features = self.vision_backbone(combined_pixel_values)
+                    patch_features, touch_features = combined_features.split(combined_features.shape[0] // 2, dim=0)
+            else: # Multimodal without Touch
+                if isinstance(pixel_values, dict):
+                    pixel_values_dict = {k: pixel_values[k][multimodal_indices] for k in pixel_values}
+                    patch_features = self.vision_backbone(pixel_values_dict)
+                else:
+                    patch_features = self.vision_backbone(pixel_values[multimodal_indices])
+
+        projected_patch_embeddings = self.projector(patch_features)            
+
+        if touch_pixel_values is not None:
+            if self.touch_projector is not None:
+                touch_features = self.touch_projector(touch_features)
             else:
-                patch_features = self.vision_backbone(pixel_values[multimodal_indices])
+                touch_features = self.projector(touch_features)
+        
+            projected_patch_embeddings = projected_patch_embeddings + touch_features
 
         # Projection Logic :: [bsz, num_patches, llm_embed_dim] =>> num_patches = (2 *) (256 + 1) for ViT-L + CLS
-        projected_patch_embeddings = self.projector(patch_features)
         projected_patch_attention_mask = None
         if attention_mask is not None:
             projected_patch_attention_mask = torch.full(
@@ -476,7 +518,17 @@ class PrismaticVLM(VLM):
     ) -> Dict[str, torch.Tensor]:
         """Borrowed from `LlamaForCausalLM` --> in general, just handles caching logic during generation."""
         if past_key_values:
-            input_ids = input_ids[:, -1:]
+            past_length = past_key_values[0][0].shape[1]
+
+            # Some generation methods already pass only the last input ID
+            if input_ids.shape[1] > past_length:
+                remove_prefix_length = past_length
+            else:
+                # Default to old behavior: keep only final ID
+                remove_prefix_length = input_ids.shape[1] - 1
+
+            input_ids = input_ids[:, remove_prefix_length:]
+
 
         # if `inputs_embeds` are passed, we only want to use them in the 1st generation step
         if inputs_embeds is not None and past_key_values is None:
@@ -523,7 +575,8 @@ class PrismaticVLM(VLM):
         gen_texts, gen_probabilities = [], []
 
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
-        with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
+        autocast = get_autocast()
+        with autocast(dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
             for idx, input_ids in enumerate(batch_input_ids):
                 if isinstance(pixel_values, torch.Tensor):
                     pixel_values = pixel_values[idx]
@@ -593,7 +646,8 @@ class PrismaticVLM(VLM):
         # Invoke super().generate --> taps into `GenerationMixin` which (redirects) to `forward()`
         autocast_dtype = self.llm_backbone.half_precision_dtype
         pixel_values = {k: pixel_values[k].to(autocast_dtype) for k in pixel_values}
-        with torch.autocast("cuda", dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
+        autocast = get_autocast()
+        with autocast(dtype=autocast_dtype, enabled=self.enable_mixed_precision_training):
             # fmt: off
             generated_ids = super().generate(
                 input_ids=input_ids,            # Shape: [1, seq]

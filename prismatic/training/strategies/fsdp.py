@@ -140,16 +140,10 @@ class FSDPStrategy(TrainingStrategy):
         if self.enable_mixed_precision_training and self.mixed_precision_dtype == torch.bfloat16:
             # MixedPrecision `param_dtype` specifies *compute* dtype (for forward/backward only)
             #   => Reference: https://pytorch.org/docs/stable/fsdp.html#torch.distributed.fsdp.MixedPrecision
-            reduce_buffer_dtype = torch.bfloat16 if not self.reduce_in_full_precision else torch.float32
+            reduce_dtype = torch.bfloat16 if not self.reduce_in_full_precision else torch.float32
             fsdp_precision_policy = MixedPrecision(
-                param_dtype=torch.bfloat16, reduce_dtype=reduce_buffer_dtype, buffer_dtype=reduce_buffer_dtype
+                param_dtype=torch.bfloat16, reduce_dtype=reduce_dtype, buffer_dtype=torch.bfloat16
             )
-
-            # When running FSDP with a frozen vision backbone --> move to half precision!
-            overwatch.info("Casting Vision Backbone to *Half Precision* via `.to(dtype=...)`")
-            self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
-            # self.vlm.projector.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
-            # self.vlm.llm_backbone.to(dtype=self.vlm.llm_backbone.half_precision_dtype)
 
         else:
             # If we're not using mixed precision, everything is in default full precision!

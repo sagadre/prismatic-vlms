@@ -38,6 +38,7 @@ from prismatic.overwatch import initialize_overwatch
 from prismatic.preprocessing import get_dataset_and_collator
 from prismatic.training import Metrics, get_train_strategy
 from prismatic.util import set_global_seed
+from prismatic.models.backbones.vision.touch_transform import ReplaceGreenScreenBackground
 
 
 # Disable Tokenizers Parallelism to Play Nice w/ PyTorch Multiprocessing DataLoaders
@@ -146,18 +147,26 @@ def pretrain(cfg: PretrainConfig) -> None:
             json.dump(yaml_cfg, f_json, indent=2)
 
     # Load Vision Backbone --> on CPU, in Full Precision (initializing model, image_transform via TIMM)
-    overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")
     not_openvlm = not cfg.model.llm_backbone_id.startswith("(openvlm)")
+    if not_openvlm:
+        overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         cfg.model.vision_backbone_id, image_resize_strategy=cfg.model.image_resize_strategy, dino_first=not_openvlm, pretrained=not_openvlm
     )
+
+    try:
+        overwatch.info(f"Loading Touch Image Transform with background `{cfg.dataset.background_image_path}`")
+        touch_image_transform = ReplaceGreenScreenBackground(cfg.dataset.dataset_root_dir / cfg.dataset.background_image_path)
+    except AttributeError:
+        overwatch.info("No background image path provided, skipping touch image transform")
+        touch_image_transform = None
 
     load_from = cfg.pretrained_checkpoint
     if cfg.model.llm_backbone_id.startswith("(openvlm)"):
         overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] from OpenVLM Checkpoint")
         # Special Handling for OpenVLM Backbones because it contains vision + language components
         vision_state_dict = get_vision_state_dict(cfg.model.llm_backbone_id)
-        vision_backbone.load_state_dict(vision_state_dict)
+        vision_backbone.load_state_dict(vision_state_dict, strict=True)
         if cfg.pretrained_checkpoint is None:
             load_from = cfg.model.llm_backbone_id
 
@@ -176,6 +185,7 @@ def pretrain(cfg: PretrainConfig) -> None:
         vision_backbone,
         llm_backbone,
         enable_mixed_precision_training=cfg.model.enable_mixed_precision_training,
+        touch_arch_specifier=cfg.model.touch_arch_specifier,
     )
 
     # [Explicit] Call to `freeze_backbones` here for clarity => will log exactly what is frozen / what's not!
@@ -196,6 +206,7 @@ def pretrain(cfg: PretrainConfig) -> None:
         prompt_builder_fn=llm_backbone.prompt_builder_fn,
         default_image_resolution=vision_backbone.default_image_resolution,
         padding_side=tokenizer.padding_side,
+        touch_image_transform=touch_image_transform,
     )
 
     # Create Train Strategy
@@ -244,7 +255,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     metrics.finalize()
 
     # And... we're done!
-    overwatch.info("Training Complete =>> Exiting")
+    overwatch.info("Training Complete")
     dist.barrier()
     dist.destroy_process_group()
 

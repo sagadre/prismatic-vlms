@@ -20,6 +20,7 @@ class ModelConfig(ChoiceRegistry):
     # fmt: off
     model_id: str                                           # Unique Model ID that fully specifies a given variant
     arch_specifier: str                                     # Architecture specifier string (e.g., "gelu-mlp")
+    touch_arch_specifier: Optional[str]                     # [Optional] Architecture specifier for touch-up models
 
     # Pretrained Backbones
     vision_backbone_id: str                                 # Pretrained Visual Featurizer (from TIMM) to load
@@ -82,6 +83,7 @@ class ModelConfig(ChoiceRegistry):
 class LLaVa_v15_Reproduction_7B(ModelConfig):
     model_id: str = "reproduction-llava-v15+7b"
     arch_specifier: str = "gelu-mlp"
+    touch_arch_specifier: str = "gelu-mlp"
 
     vision_backbone_id: str = "clip-vit-l-336px"
     llm_backbone_id: str = "vicuna-v15-7b"
@@ -450,6 +452,7 @@ class Prism_13B_DINOSigLIP(Exp_13B_One_Stage):
 class Openlm_LLaVa(ModelConfig):
     model_id: str = "openlm"
     arch_specifier: str = "no-align+fused-gelu-mlp"
+    touch_arch_specifier: str = "fused-gelu-mlp"
 
     vision_backbone_id: str = "dinosiglip-vit-so-384px"
     llm_backbone_id: str = "openlm"

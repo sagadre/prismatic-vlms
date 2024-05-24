@@ -243,7 +243,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             self.llm.model = torch.compile(self.llm.model)
 
         # Load Tokenizer
-        overwatch.info(f"Loading [bold]{self.llm_family}[/] GPTNeoXTokenizerFast", ctx_level=1)
+        overwatch.info(f"Loading tokenizer [bold]{self.llm_family} EleutherAI/gpt-neox-20b[/].", ctx_level=1)
         self.tokenizer = CustomTokenizer.from_pretrained(
             "EleutherAI/gpt-neox-20b", model_max_length=self.llm_max_length
         )
@@ -322,7 +322,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds.to(self.llm.device) if inputs_embeds is not None else None,
             labels=labels,
-            use_cache=use_cache,
+            use_cache=False,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,

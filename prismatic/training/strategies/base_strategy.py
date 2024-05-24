@@ -25,6 +25,7 @@ from prismatic.training.metrics import Metrics
 from prismatic.util import check_bloat16_supported
 from prismatic.util.batching_utils import SplitModalitySampler
 from prismatic.util.data_utils import PaddedCollatorForLanguageModeling
+from prismatic.util.torch_utils import get_autocast
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -145,13 +146,15 @@ class TrainingStrategy(ABC):
                 drop_last=False,
             )
 
+        autocast = get_autocast()
+
         # Create a DataLoader with the initialized sampler, per-device-bsz, and collator
         dataloader = DataLoader(
             dataset,
             batch_size=self.per_device_batch_size,
             sampler=sampler,
             collate_fn=collator,
-            num_workers=4,
+            num_workers=8,
             worker_init_fn=self.worker_init_fn,
         )
 
@@ -185,8 +188,7 @@ class TrainingStrategy(ABC):
                 #   => Basically, if we're using mixed precision (or not), autocast()/FSDP will move to device!
                 for train_idx, batch in enumerate(dataloader):
                     # [Contract] self.vlm.forward() must automatically compute `loss` and return!
-                    with torch.autocast(
-                        "cuda",
+                    with autocast(
                         dtype=self.mixed_precision_dtype,
                         enabled=self.enable_mixed_precision_training,
                     ):
@@ -194,6 +196,7 @@ class TrainingStrategy(ABC):
                             input_ids=batch["input_ids"],
                             attention_mask=batch["attention_mask"],
                             pixel_values=batch["pixel_values"],
+                            touch_pixel_values=batch.get("touch_pixel_values", None),
                             labels=batch["labels"],
                             multimodal_indices=batch["multimodal_indices"],
                         )
@@ -235,6 +238,7 @@ class TrainingStrategy(ABC):
 
                         # Check for Termination & Save Final Checkpoint (in case `max_steps` is not None)
                         if self.max_steps is not None and metrics.global_step >= self.max_steps:
+                            overwatch.info(f"Saving checkpoint at end of epoch {epoch}...")
                             self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item())
                             dist.barrier()
 
@@ -246,5 +250,6 @@ class TrainingStrategy(ABC):
 
             # Save checkpoint at end each epoch (if `self.max_steps` is None)
             if self.max_steps is None:
+                overwatch.info(f"Saving checkpoint at end of epoch {epoch}...")
                 self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item())
                 dist.barrier()

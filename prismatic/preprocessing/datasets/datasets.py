@@ -33,6 +33,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         image_dir: Path,
         image_transform: ImageTransform,
         tokenizer: PreTrainedTokenizerBase,
+        touch_image_transform: ImageTransform = None,
     ) -> None:
         super().__init__()
         self.chat_json, self.image_dir = chat_json, image_dir
@@ -115,10 +116,12 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         image_transform: ImageTransform,
         tokenizer: PreTrainedTokenizerBase,
         prompt_builder_fn: Type[PromptBuilder],
+        touch_image_transform: ImageTransform = None,
     ) -> None:
         super().__init__()
         self.instruct_json, self.image_dir = instruct_json, image_dir
         self.image_transform, self.tokenizer = image_transform, tokenizer
+        self.touch_image_transform = touch_image_transform
         self.prompt_builder_fn = prompt_builder_fn
         self.dataset_type = "finetune"
 
@@ -142,7 +145,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
 
         :param idx: Index to retrieve from the dataset.
 
-        :return: Dictionary of {"pixel_values": torch.Tensor, "input_ids": torch.Tensor, "labels": torch.Tensor}
+        :return: Dictionary of {"pixel_values": torch.Tensor, "touch_pixel_values": torch.Tensor, "input_ids": torch.Tensor, "labels": torch.Tensor}
         """
         conversation = self.examples[idx]["conversations"]
 
@@ -173,7 +176,8 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         # Handle Truncation (if necessary)
         input_ids, labels = input_ids[: self.tokenizer.model_max_length], labels[: self.tokenizer.model_max_length]
 
-        # === Handle "unimodal" (language-only) vs. "multimodal" ===
+        # === Handle "unimodal" (language-only) vs. "multimodal" with or without touch ===
+
         if "image" in self.examples[idx]:
             image_path = Path(self.examples[idx]["image"])
 
@@ -182,13 +186,24 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
                 labels[0] = IGNORE_INDEX
 
             # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
-            pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
-
-            return dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels)
-
+            if self.touch_image_transform is not None and "mmwand" in str(image_path):
+                pixel_values = self.touch_image_transform(Image.open(self.image_dir / image_path).convert("RGB"), self.image_transform)
+            else:
+                pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
         else:
-            # No image --> return `pixel_values` = None; Collator will do the smart batch handling for us!
-            return dict(pixel_values=None, input_ids=input_ids, labels=labels)
+            pixel_values = None
+        
+        if "touch" in self.examples[idx]:
+            touch_path = Path(self.examples[idx]["touch"])
+            touch_pixel_values = self.image_transform(Image.open(self.image_dir / touch_path).convert("RGB"))
+        elif isinstance(pixel_values, dict):
+            touch_pixel_values = {k: torch.zeros_like(pixel_values[k]) for k in pixel_values.keys()}
+        elif pixel_values is not None:
+            touch_pixel_values = torch.zeros_like(pixel_values)
+        else:
+            touch_pixel_values = None
+
+        return dict(pixel_values=pixel_values, touch_pixel_values=touch_pixel_values, input_ids=input_ids, labels=labels)
 
     def get_modality_lengths(self) -> List[Tuple[bool, int]]:
         """Get a list of modalities (unimodal / text-only vs. multimodal) and length of conversations per example."""

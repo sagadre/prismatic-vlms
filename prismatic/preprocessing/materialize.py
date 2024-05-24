@@ -27,6 +27,7 @@ def get_dataset_and_collator(
     prompt_builder_fn: Type[PromptBuilder],
     default_image_resolution: Tuple[int, int, int],
     padding_side: str = "right",
+    touch_image_transform: ImageTransform = None,
 ) -> Tuple[Dataset, PaddedCollatorForLanguageModeling]:
     dataset_cls = DATASET_INITIALIZER[stage]
     dataset_root_dir = dataset_cfg.dataset_root_dir
@@ -38,7 +39,8 @@ def get_dataset_and_collator(
     if stage == "align":
         annotation_json, image_dir = dataset_cfg.align_stage_components
         dataset = dataset_cls(
-            dataset_root_dir / annotation_json, dataset_root_dir / image_dir, image_transform, tokenizer
+            dataset_root_dir / annotation_json, dataset_root_dir / image_dir, image_transform, tokenizer,
+            touch_image_transform=touch_image_transform,
         )
         return dataset, collator
 
@@ -50,6 +52,7 @@ def get_dataset_and_collator(
             image_transform,
             tokenizer,
             prompt_builder_fn=prompt_builder_fn,
+            touch_image_transform=touch_image_transform,
         )
         return dataset, collator
 
@@ -61,6 +64,7 @@ def get_dataset_and_collator(
             image_transform,
             tokenizer,
             prompt_builder_fn=prompt_builder_fn,
+            touch_image_transform=touch_image_transform,
         )
         return dataset, collator
 

@@ -27,6 +27,15 @@ class PaddedCollatorForLanguageModeling:
     def __call__(self, instances: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
         pixel_values = [instance["pixel_values"] for instance in instances]
+        touch_pixel_values = None
+        if "touch_pixel_values" in instances[0]:
+            touch_pixel_values = []
+            is_none = True
+            for instance in instances:
+                touch_pixel_values.append(instance["touch_pixel_values"])
+                is_none = is_none and instance["touch_pixel_values"] is None
+            if is_none:
+                touch_pixel_values = None
 
         # For now, we only support Tokenizers with `padding_side = "right"` during Training (but plan to extend!)
         #   => Handle padding via RNN Utils => `pad_sequence`
@@ -44,7 +53,7 @@ class PaddedCollatorForLanguageModeling:
         # Some examples are "language-only" --> build a Tensor of `multimodal_indices` that we can slice into easily
         multimodal_indices = torch.tensor(
             [idx for idx in range(len(pixel_values)) if pixel_values[idx] is not None], dtype=torch.long
-        )
+        )            
 
         # Stack all `pixel_values` --> depending on type (torch.Tensor, or Dict[str, torch.Tensor]) & presence of None
         if len(multimodal_indices) == 0:
@@ -68,9 +77,36 @@ class PaddedCollatorForLanguageModeling:
             }
         else:
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
+        
+        if touch_pixel_values is not None:
+            touch_multimodal_indices = torch.tensor(
+                [idx for idx in range(len(touch_pixel_values)) if touch_pixel_values[idx] is not None], dtype=torch.long
+            )
+            if len(touch_multimodal_indices) == 0:
+                touch_pixel_values = torch.stack([self.dummy_pixel_values for _ in range(len(input_ids))])
+            elif isinstance(pv_example := touch_pixel_values[touch_multimodal_indices[0]], torch.Tensor):
+                touch_pixel_values = torch.stack(
+                    [
+                        touch_pixel_values[idx] if idx in touch_multimodal_indices else self.dummy_pixel_values
+                        for idx in range(len(input_ids))
+                    ]
+                )
+            elif isinstance(pv_example, dict):
+                touch_pixel_values = {
+                    k: torch.stack(
+                        [
+                            touch_pixel_values[idx][k] if idx in touch_multimodal_indices else self.dummy_pixel_values
+                            for idx in range(len(input_ids))
+                        ]
+                    )
+                    for k in pv_example
+                }
+            else:
+                raise ValueError(f"Unsupported `touch_pixel_values` type = {type(touch_pixel_values)}")
 
         return dict(
             pixel_values=pixel_values,
+            touch_pixel_values=touch_pixel_values,
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=labels,

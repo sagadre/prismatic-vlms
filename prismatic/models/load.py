@@ -51,7 +51,6 @@ def load(
     """Loads a pretrained PrismaticVLM from either local disk or the HuggingFace Hub."""
     if os.path.isdir(model_id_or_path):
         overwatch.info(f"Loading from local path `{(run_dir := Path(model_id_or_path))}`")
-
         # Get paths for `config.json` and pretrained checkpoint
         assert (config_json := run_dir / "config.json").exists(), f"Missing `config.json` for `{run_dir = }`"
         assert (checkpoint_pt := run_dir / "checkpoints" / "latest-checkpoint.pt").exists(), "Missing checkpoint!"
@@ -65,9 +64,9 @@ def load(
             pretrained=not_from_pretrained_vlm
         )
         if model_id_or_path.startswith("(openvlm)"):
-            print("Loading vision state dict")
+            overwatch.info(f"Loading vision state dict from OpenVLM")
             vision_state_dict = get_vision_state_dict(model_id_or_path)
-            vision_backbone.load_state_dict(vision_state_dict)
+            vision_backbone.load_state_dict(vision_state_dict, strict=True)
 
         llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
             model_id_or_path,
@@ -80,13 +79,14 @@ def load(
             "no-align+fused-gelu-mlp",
             vision_backbone,
             llm_backbone,
-            enable_mixed_precision_training=False
+            enable_mixed_precision_training=False,
+            touch_arch_specifier="fused-gelu-mlp",
         )
 
         if model_id_or_path.startswith("(openvlm)"):
-            print("Loading projector state dict")
+            overwatch.info("Loading projector state dict from OpenVLM")
             projector_state_dict = get_projector_state_dict(model_id_or_path)
-            vlm.projector.load_state_dict(projector_state_dict)
+            vlm.projector.load_state_dict(projector_state_dict, strict=True)
         return vlm
     else:
         if model_id_or_path not in GLOBAL_REGISTRY:
@@ -117,7 +117,8 @@ def load(
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         model_cfg["vision_backbone_id"],
         model_cfg["image_resize_strategy"],
-        # pretrained=False,  # We cannot really know if the vision backbone should be loaded or not here, the weight might or might not be in the checkpoint
+        pretrained=False,  # We cannot really know if the vision backbone should be loaded or not here, the weight might or might not be in the checkpoint
+        dino_first=not model_cfg['llm_backbone_id'].startswith("(openvlm)"),
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
