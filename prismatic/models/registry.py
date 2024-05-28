@@ -615,7 +615,74 @@ MODEL_REGISTRY = {
             "datasets": ["LLaVa v1.5 Instruct", "LVIS-Instruct-4V", "LRV-Instruct"],
             "train_epochs": 2,
         }
-    }
+    },
+
+    # === Additional LLM Backbones ===
+    "llama2-chat+7b": {
+        "model_id": "llama2-chat+7b",
+        "names": ["Llama-2 Chat 7B"],
+        "description": {
+            "name": "Llama-2 Chat 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Llama-2 Chat 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "llama2-chat+13b": {
+        "model_id": "llama2-chat+13b",
+        "names": ["Llama-2 Chat 13B"],
+        "description": {
+            "name": "Llama-2 Chat 13B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Llama-2 Chat 13B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "mistral-v0.1+7b": {
+        "model_id": "mistral-v0.1+7b",
+        "names": ["Mistral v0.1 7B"],
+        "description": {
+            "name": "Mistral v0.1 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Mistral v0.1 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "mistral-instruct-v0.1+7b": {
+        "model_id": "mistral-instruct-v0.1+7b",
+        "names": ["Mistral Instruct v0.1 7B"],
+        "description": {
+            "name": "Mistral Instruct v0.1 7B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Mistral Instruct v0.1 7B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
+    "phi-2+3b": {
+        "model_id": "phi-2+3b",
+        "names": ["Phi-2 3B"],
+        "description": {
+            "name": "Phi-2 3B",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "CLIP ViT-L/14 @ 336px",
+            "image_processing": "Letterbox",
+            "language_model": "Phi-2 3B",
+            "datasets": ["LLaVa v1.5 Instruct"],
+            "train_epochs": 1,
+        }
+    },
 }
 
 # Build Global Registry (Model ID, Name) -> Metadata

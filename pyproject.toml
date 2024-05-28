@@ -10,7 +10,7 @@ authors = [
     {name = "Ashwin Balakrishna", email="ashwin.balakrishna@tri.global"},
 ]
 description = "Prismatic VLMs: Investigating the Design Space of Visually-Conditioned Language Models"
-version = "0.0.2"
+version = "0.0.3"
 readme = "README.md"
 requires-python = ">=3.8"
 keywords = ["vision-language models", "multimodal pretraining", "machine learning"]
@@ -31,20 +31,21 @@ classifiers = [
 ]
 dependencies = [
     "accelerate>=0.25.0",
-    "draccus @ git+https://github.com/dlwh/draccus",
+    "draccus==0.8.0",
     "einops",
-    # "flash_attn>=2.3.3",      # Here for documentation -- install *AFTER* editable install (follow README)
-    "huggingface_hub",
+    # "flash_attn==2.5.5",      # Here for documentation -- install *AFTER* editable install (follow README)
+    "huggingface_hub==0.22.2",
     "jsonlines",
     "matplotlib",
-    "pyyaml-include==1.4.1",    # `pyyaml-include` major version 2 introduces breaking changes to `draccus`
+    "protobuf",
     "rich",
-    "sentencepiece",
-    "timm>=0.9.10",
-    "torch>=2.1.0",
+    "sentencepiece==0.1.99",
+    "timm==0.9.10",
+    "tokenizers==0.19.1",
+    "torch==2.2.0",
     "torchvision>=0.16.0",
     "torchaudio",
-    "transformers>=4.38.1",
+    "transformers==4.40.1",
     "wandb"
 ]
 
@@ -54,6 +55,7 @@ dev = [
     "gpustat",
     "ipython",
     "pre-commit",
+    "pytest",
     "ruff>=0.2.2",
 ]
 sagemaker = [
@@ -72,6 +74,9 @@ exclude = ["cache"]
 
 [tool.setuptools.package-data]
 "prismatic" = ["py.typed"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.black]
 line-length = 121

@@ -9,6 +9,8 @@ help:
 	@echo "    Run code style and linting (black, ruff) *without* changing files!"
 	@echo "make autoformat"
 	@echo "    Run code styling (black, ruff) and update in place - committing with pre-commit also does this."
+	@echo "make test"
+	@echo "    Run tests via pytest"
 
 clean:
 	find . -name "*.pyc" | xargs rm -f && \
@@ -21,6 +23,9 @@ check:
 autoformat:
 	black .
 	ruff check --fix --show-fixes .
+
+test:
+	pytest
 
 
 # [TRI Internal] Sagemaker Docker Build + Push to ECR
