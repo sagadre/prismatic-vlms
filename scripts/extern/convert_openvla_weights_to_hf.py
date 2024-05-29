@@ -67,7 +67,7 @@ def remap_state_dicts_for_hf(
 
     # Iterate through Vision Backbone =>> add "vision_backbone." prefix
     for key, value in vision_backbone_state_dict.items():
-        hf_state_dict[f"vision_backbone.{key}"] = value
+        hf_state_dict[key.replace("featurizer.", "vision_backbone.")] = value
 
     # Iterate through Projector =>> use `PROJECTOR_KEY_MAPPING`
     for key, value in projector_state_dict.items():
@@ -170,12 +170,16 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     print("[*] Loading Prismatic VLM State Dictionary from Checkpoint")
     model_state_dict = torch.load(checkpoint_pt, map_location="cpu")["model"]
     assert ("downsampler" not in model_state_dict) or (len(model_state_dict["downsampler"]) == 0), "Downsampler?"
-    assert ("projector" in model_state_dict) and ("llm_backbone" in model_state_dict), "Missing keys!"
+    assert (
+        ("vision_backbone" in model_state_dict)
+        and ("projector" in model_state_dict)
+        and ("llm_backbone" in model_state_dict)
+    ), "Missing keys!"
 
     # Convert
     print("[*] Running Conversion")
     converted_state_dict = remap_state_dicts_for_hf(
-        timm_vision_backbone.state_dict(), model_state_dict["projector"], model_state_dict["llm_backbone"]
+        model_state_dict["vision_backbone"], model_state_dict["projector"], model_state_dict["llm_backbone"]
     )
 
     # Create PrismaticForConditionalGeneration =>> Note that we can't initialize on `meta` device because TIMM
