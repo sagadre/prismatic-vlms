@@ -392,6 +392,9 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
         self.bins = np.linspace(-1, 1, config.n_action_bins)
         self.bin_centers = (self.bins[:-1] + self.bins[1:]) / 2.0
 
+        # Compute vocab size for de-tokenization -- revert added "multiple of"
+        self.vocab_size = self.config.text_config.vocab_size - self.config.pad_to_multiple_of
+
     def predict_action(
         self, input_ids: Optional[torch.LongTensor] = None, unnorm_key: Optional[str] = None, **kwargs
     ) -> np.ndarray:
@@ -407,7 +410,7 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
 
         # Extract predicted action tokens and translate into (normalized) continuous actions
         predicted_action_token_ids = generated_ids[0, -self.get_action_dim(unnorm_key) :].cpu().numpy()
-        discretized_actions = self.config.text_config.vocab_size - predicted_action_token_ids
+        discretized_actions = self.vocab_size - predicted_action_token_ids
         discretized_actions = np.clip(discretized_actions - 1, a_min=0, a_max=self.bin_centers.shape[0] - 1)
         normalized_actions = self.bin_centers[discretized_actions]
 
