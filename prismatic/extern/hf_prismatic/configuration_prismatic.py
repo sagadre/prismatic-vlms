@@ -5,7 +5,7 @@ HuggingFace-style configuration definition for Prismatic VLMs, inheriting from `
 Default configuration specifies `siglip-224px+7b`.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from transformers import PretrainedConfig
 from transformers.models.auto import CONFIG_MAPPING
@@ -109,3 +109,17 @@ class PrismaticConfig(PretrainedConfig):
 
         # Dispatch **kwargs to super() =>> note that `pad_token_id` collides, so we pass it in here as well...
         super().__init__(pad_token_id=pad_token_id, **kwargs)
+
+
+class OpenVLAConfig(PrismaticConfig):
+    model_type: str = "openvla"
+
+    def __init__(
+        self,
+        norm_stats: Optional[Dict[str, Dict[str, Dict[str, Dict[str, List[float]]]]]] = None,
+        n_action_bins: int = 256,
+        **kwargs: str,
+    ) -> None:
+        self.norm_stats = norm_stats
+        self.n_action_bins = n_action_bins
+        super().__init__(**kwargs)
