@@ -6,8 +6,9 @@ Given an HF-exported Prismatic model, attempt to load via AutoClasses, and verif
 
 import requests
 import torch
+import time
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor
+from transformers import AutoModelForVision2Seq, AutoProcessor, BitsAndBytesConfig
 
 # === Verification Arguments ===
 MODEL_PATH = "TRI-ML/prismatic-siglip-224px-7b"
@@ -63,8 +64,8 @@ def verify_hf() -> None:
     # vlm = AutoModelForVision2Seq.from_pretrained(
     #     MODEL_PATH,
     #     attn_implementation="flash_attention_2",
-    #     torch_dtype=torch.bfloat16,
-    #     load_in_8bit=True,
+    #     torch_dtype=torch.float16,
+    #     quantization_config=BitsAndBytesConfig(load_in_8bit=True),
     #     low_cpu_mem_usage=True,
     #     trust_remote_code=True,
     # )
@@ -82,6 +83,7 @@ def verify_hf() -> None:
 
     # Iterate over Sample Prompts =>> Generate
     image = Image.open(requests.get(DEFAULT_IMAGE_URL, stream=True).raw).convert("RGB")
+    num_tokens, total_time = 0, 0.0
 
     print("[*] Iterating over Sample Prompts\n===\n")
     for idx, prompt in enumerate(SAMPLE_PROMPTS_FOR_GENERATION):
@@ -93,13 +95,32 @@ def verify_hf() -> None:
         # with torch.autocast("cuda", dtype=torch.bfloat16, enabled=True):
         #     gen_ids = vlm.generate(**inputs, do_sample=False, min_length=1, max_length=512)
 
-        # === NATIVE BFLOAT16 MODE || 4/8-Bit Quantization Mode ===
+        # === NATIVE BFLOAT16 MODE  ===
         inputs = processor(prompt, image).to(device, dtype=torch.bfloat16)
-        gen_ids = vlm.generate(**inputs, do_sample=False, min_length=1, max_length=512)
+
+        # === 8-BIT/4-BIT QUANTIZATION MODE ===
+        # inputs = processor(prompt, image).to(device, dtype=torch.float16)
+
+        # Burn-In
+        for _ in range(3):
+            _ = vlm.generate(**inputs, do_sample=False, min_length=1, max_length=512)
+
+        # Benchmark
+        gen_ids = None
+        for _ in range(5):
+            start_time = time.time()
+            gen_ids = vlm.generate(**inputs, do_sample=False, min_length=1, max_length=512)
+            total_time += time.time() - start_time
+
+            gen_ids = gen_ids[0, inputs.input_ids.shape[1] :]
+            num_tokens += len(gen_ids)
 
         # ===
-        gen_text = processor.decode(gen_ids[0, inputs.input_ids.shape[1] :], skip_special_tokens=True).strip()
+        gen_text = processor.decode(gen_ids, skip_special_tokens=True).strip()
         print(f"[{idx + 1}] Input Prompt => {prompt}\n    Generated    => {gen_text}\n")
+
+    # Compute Tokens / Second
+    print(f"[*] Tokens per Second = {num_tokens / total_time} w/ {num_tokens = } and {total_time = }")
 
 
 if __name__ == "__main__":
