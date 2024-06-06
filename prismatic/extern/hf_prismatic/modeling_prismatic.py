@@ -37,25 +37,85 @@ def unpack_tuple(fn: Callable[[Any], Tuple[Any]]) -> Callable[[Any], Any]:
     return wrapper
 
 
+# === Prismatic Vision Backbone (nn.Module) Definitions (w/ Fused Backbone Support) ===
+class PrismaticVisionBackbone(nn.Module):
+    def __init__(self, config: PrismaticConfig) -> None:
+        super().__init__()
+        self.use_fused_vision_backbone = config.use_fused_vision_backbone
+
+        # [Contract] Validate number of (fused) vision backbones, create "alpha" featurizer and Instantiate
+        #   =>> Note :: Monkey-Patch the `forward()` function of the backbone to ensure FSDP-compatibility
+        #               Hardcodes `get_intermediate_layers` to return the **SECOND-TO-LAST** layer patches!
+        assert len(config.timm_model_ids) <= 2, "Prismatic models only support up to 2 (fused) vision backbones!"
+        self.featurizer_alpha = timm.create_model(
+            config.timm_model_ids[0],
+            pretrained=False,
+            num_classes=0,
+            img_size=config.image_sizes[0],
+            act_layer=config.timm_override_act_layers[0],
+        )
+        self.featurizer_alpha.forward = unpack_tuple(
+            partial(self.featurizer_alpha.get_intermediate_layers, n={len(self.featurizer_alpha.blocks) - 2})
+        )
+        self.embed_dim = self.featurizer_alpha.embed_dim
+
+        # If `use_fused_vision_backbone` =>> create "beta" featurizer
+        if self.use_fused_vision_backbone:
+            self.featurizer_beta = timm.create_model(
+                config.timm_model_ids[1],
+                pretrained=False,
+                num_classes=0,
+                img_size=config.image_sizes[1],
+                act_layer=config.timm_override_act_layers[1],
+            )
+            self.featurizer_beta.forward = unpack_tuple(
+                partial(self.featurizer_beta.get_intermediate_layers, n={len(self.featurizer_beta.blocks) - 2})
+            )
+            self.embed_dim += self.featurizer_beta.embed_dim
+
+    def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        """Run image (`pixel_values`) through featurizer; if channel-stacked, then dispatch and sequence stack."""
+        if not self.use_fused_vision_backbone:
+            return self.featurizer_alpha(pixel_values)
+
+        # Split `pixel_values :: [bsz, 2 * 3, resolution, resolution]` =>> featurize =>> channel stack
+        img_alpha, img_beta = torch.split(pixel_values, [3, 3], dim=1)
+        patches_alpha, patches_beta = self.featurizer_alpha(img_alpha), self.featurizer_beta(img_beta)
+
+        return torch.cat([patches_alpha, patches_beta], dim=2)
+
+
 # === Prismatic Projector (nn.Module) Definitions ===
 class PrismaticProjector(nn.Module):
-    def __init__(self, vision_backbone_id: str, vision_dim: int, llm_dim: int) -> None:
+    def __init__(self, use_fused_vision_backbone: bool, vision_dim: int, llm_dim: int) -> None:
         super().__init__()
-        self.vision_backbone_id = vision_backbone_id
+        self.use_fused_vision_backbone = use_fused_vision_backbone
         self.vision_dim, self.llm_dim = vision_dim, llm_dim
 
-        # TODO (siddk) :: Add proper support for fused backbones...
-        if ("dinoclip" in self.vision_backbone_id) or ("dinosiglip" in self.vision_backbone_id):
-            raise NotImplementedError("Support for fused backbones is not yet implemented!")
-
-        self.fc1 = nn.Linear(self.vision_dim, self.llm_dim, bias=True)
-        self.fc2 = nn.Linear(self.llm_dim, self.llm_dim, bias=True)
-        self.act_fn = nn.GELU()
+        # Switch on `use_fused_vision_backbone` =>> use slightly different MLPs and projection factors!
+        if not self.use_fused_vision_backbone:
+            self.fc1 = nn.Linear(self.vision_dim, self.llm_dim, bias=True)
+            self.fc2 = nn.Linear(self.llm_dim, self.llm_dim, bias=True)
+            self.act_fn1 = nn.GELU()
+        else:
+            initial_projection_dim = 4 * vision_dim
+            self.fc1 = nn.Linear(self.vision_dim, initial_projection_dim, bias=True)
+            self.fc2 = nn.Linear(initial_projection_dim, self.llm_dim, bias=True)
+            self.fc3 = nn.Linear(self.llm_dim, self.llm_dim, bias=True)
+            self.act_fn1 = nn.GELU()
+            self.act_fn2 = nn.GELU()
 
     def forward(self, img_patches: torch.Tensor) -> torch.Tensor:
-        projected_features = self.fc1(img_patches)
-        projected_features = self.act_fn(projected_features)
-        projected_features = self.fc2(projected_features)
+        if not self.use_fused_vision_backbone:
+            projected_features = self.fc1(img_patches)
+            projected_features = self.act_fn1(projected_features)
+            projected_features = self.fc2(projected_features)
+        else:
+            projected_features = self.fc1(img_patches)
+            projected_features = self.act_fn1(projected_features)
+            projected_features = self.fc2(projected_features)
+            projected_features = self.act_fn2(projected_features)
+            projected_features = self.fc3(projected_features)
 
         return projected_features
 
@@ -116,23 +176,14 @@ class PrismaticForConditionalGeneration(PrismaticPreTrainedModel):
     def __init__(self, config: PrismaticConfig) -> None:
         super().__init__(config)
 
-        # Instantiate Vision Backbone
-        #   =>> Note :: Monkey-Patch the `forward()` function of the backbone to ensure FSDP-compatibility
-        #               Hardcodes `get_intermediate_layers` to return the **SECOND-TO-LAST** layer patches!
-        self.vision_backbone = timm.create_model(
-            config.timm_model_id,
-            pretrained=False,
-            num_classes=0,
-            img_size=config.image_size,
-            act_layer=config.timm_override_act_layer,
-        )
-        self.vision_backbone.forward = unpack_tuple(
-            partial(self.vision_backbone.get_intermediate_layers, n={len(self.vision_backbone.blocks) - 2})
-        )
+        # Instantiate PrismaticVisionBackbone (w/ Potential Fused Backbone)
+        self.vision_backbone = PrismaticVisionBackbone(config)
 
         # Create Multimodal Projector
         self.projector = PrismaticProjector(
-            config.vision_backbone_id, vision_dim=self.vision_backbone.embed_dim, llm_dim=config.text_config.hidden_size
+            config.use_fused_vision_backbone,
+            vision_dim=self.vision_backbone.embed_dim,
+            llm_dim=config.text_config.hidden_size,
         )
 
         # Instantiate LLM Backbone

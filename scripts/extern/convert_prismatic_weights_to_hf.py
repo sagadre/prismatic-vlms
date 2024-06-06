@@ -13,7 +13,7 @@ import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 import draccus
 import timm
@@ -30,13 +30,14 @@ from prismatic.extern.hf_prismatic.processing_prismatic import PrismaticImagePro
 class HFConvertConfig:
     # fmt: off
     prismatic_model_path_or_id: Union[str, Path] = (                    # Path to Pretrained VLM (on disk or HF Hub)
-        "siglip-224px+7b"
+        "prism-dinosiglip-224px+7b"
     )
     output_hf_model_local_path: Path = Path(                            # Path to Local Path to save HF model
-        "/mnt/fsx/x-prismatic-vlms/hf-convert/prismatic-siglip-224px-7b"
+        "/mnt/fsx/x-prismatic-vlms/hf-convert/prismatic-prism-dinosiglip-224px-7b"
     )
-    output_hf_model_hub_path: str = "TRI-ML/prismatic-siglip-224px-7b"  # Path to HF Hub Path for "final" HF model
-                                                                        #   => huggingface.co/TRI-ML/prismatic-{...}
+    output_hf_model_hub_path: str = (                                   # Path to HF Hub Path for "final" HF model
+        "TRI-ML/prismatic-prism-dinosiglip-224px-7b"                    #   => huggingface.co/TRI-ML/prismatic-{...}
+    )
 
     # HF Hub Credentials (required for Gated Models like LLaMa-2)
     hf_token: Union[str, Path] = Path(".hf_token")                      # Environment variable or Path to HF Token
@@ -53,20 +54,18 @@ PROJECTOR_KEY_MAPPING = {
     "projector.0.bias": "projector.fc1.bias",
     "projector.2.weight": "projector.fc2.weight",
     "projector.2.bias": "projector.fc2.bias",
+    "projector.4.weight": "projector.fc3.weight",
+    "projector.4.bias": "projector.fc3.bias",
 }
 
 
 def remap_state_dicts_for_hf(
-    vision_backbone_state_dict: Dict[str, torch.Tensor],
     projector_state_dict: Dict[str, torch.Tensor],
     llm_backbone_state_dict: Dict[str, torch.Tensor],
+    vision_backbone_state_dicts: List[Dict[str, torch.Tensor]],
 ) -> Dict[str, torch.Tensor]:
     """Iterate through Prismatic component state dictionaries and unify / fix key mapping for HF conversion."""
     hf_state_dict = {}
-
-    # Iterate through Vision Backbone =>> add "vision_backbone." prefix
-    for key, value in vision_backbone_state_dict.items():
-        hf_state_dict[f"vision_backbone.{key}"] = value
 
     # Iterate through Projector =>> use `PROJECTOR_KEY_MAPPING`
     for key, value in projector_state_dict.items():
@@ -75,6 +74,13 @@ def remap_state_dicts_for_hf(
     # Iterate through LLM Backbone =>> replace `llm.` with `language_model.`
     for key, value in llm_backbone_state_dict.items():
         hf_state_dict[key.replace("llm.", "language_model.")] = value
+
+    # Iterate through Vision Backbone =>> add "vision_backbone." prefix
+    assert len(vision_backbone_state_dicts) <= 2, "Prismatic models only support up to 2 (fused) vision backbones!"
+    for idx, vision_backbone_state_dict in enumerate(vision_backbone_state_dicts):
+        prefix = "vision_backbone.featurizer_alpha" if idx == 0 else "vision_backbone.featurizer_beta"
+        for key, value in vision_backbone_state_dict.items():
+            hf_state_dict[f"{prefix}.{key}"] = value
 
     return hf_state_dict
 
@@ -119,7 +125,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
         hf_config.hf_llm_id, model_max_length=hf_config.llm_max_length, token=cfg.hf_token, padding_side="right"
     )
     tokenizer.add_special_tokens({"pad_token": "<PAD>"})
-    tokenizer.init_kwargs.pop("add_prefix_space")  # Pop to prevent unnecessary warning on reload...
+    tokenizer.init_kwargs.pop("add_prefix_space", None)  # Pop to prevent unnecessary warning on reload...
     assert tokenizer.pad_token_id == hf_config.pad_token_id, "Incorrect Pad Token ID!"
     assert len(tokenizer) > hf_config.text_config.vocab_size, "Tokenizer vocabulary must be larger than LLM vocabulary!"
 
@@ -131,23 +137,33 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
 
     # Create Vision Backbone & Transform =>> following `prismatic.models.materialize.get_vision_backbone_and_transform`
     #   =>> Deviates a bit from existing code; as such, explicitly tested in `tests/test_image_transforms.py`
-    print("[*] Loading TIMM Vision Backbone and Image Transform =>> Initializing PrismaticImageProcessor")
-    timm_vision_backbone = timm.create_model(
-        hf_config.timm_model_id,
-        pretrained=True,
-        num_classes=0,
-        img_size=hf_config.image_size,
-        act_layer=hf_config.timm_override_act_layer,
-    )
-    data_cfg = timm.data.resolve_model_data_config(timm_vision_backbone)
+    print("[*] Loading TIMM Vision Backbone(s) and Image Transform(s) =>> Initializing PrismaticImageProcessor")
+    timm_vision_backbones, input_sizes, interpolations, means, stds = [], [], [], [], []
+    for idx, timm_model_id in enumerate(hf_config.timm_model_ids):
+        timm_vision_backbone = timm.create_model(
+            timm_model_id,
+            pretrained=True,
+            num_classes=0,
+            img_size=hf_config.image_sizes[idx],
+            act_layer=hf_config.timm_override_act_layers[idx],
+        )
+        timm_vision_backbones.append(timm_vision_backbone)
+
+        # Get Per-Backbone Image Processing
+        data_cfg = timm.data.resolve_model_data_config(timm_vision_backbone)
+        input_sizes.append((3, hf_config.image_sizes[idx], hf_config.image_sizes[idx]))
+        interpolations.append(data_cfg["interpolation"])
+        means.append(data_cfg["mean"])
+        stds.append(data_cfg["std"])
 
     # Create PrismaticImageProcessor (`transformers.ImageProcessingMixin`)
     hf_image_processor = PrismaticImageProcessor(
+        use_fused_vision_backbone=hf_config.use_fused_vision_backbone,
         image_resize_strategy=hf_config.image_resize_strategy,
-        input_size=data_cfg["input_size"],
-        interpolation=data_cfg["interpolation"],
-        mean=data_cfg["mean"],
-        std=data_cfg["std"],
+        input_sizes=input_sizes,
+        interpolations=interpolations,
+        means=means,
+        stds=stds,
     )
 
     # Create top-level PrismaticProcessor (`transformers.ProcessorMixin` =>> enables registry w/ AutoProcessor)
@@ -163,7 +179,9 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     # Convert
     print("[*] Running Conversion")
     converted_state_dict = remap_state_dicts_for_hf(
-        timm_vision_backbone.state_dict(), model_state_dict["projector"], model_state_dict["llm_backbone"]
+        model_state_dict["projector"],
+        model_state_dict["llm_backbone"],
+        vision_backbone_state_dicts=[vb.state_dict() for vb in timm_vision_backbones],
     )
 
     # Create PrismaticForConditionalGeneration =>> Note that we can't initialize on `meta` device because TIMM
@@ -185,6 +203,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
 
     # Push to Hub
     print("[*] Pushing Model & Processor to HF Hub")
+    hf_config.push_to_hub(cfg.output_hf_model_hub_path)
     hf_model.push_to_hub(cfg.output_hf_model_hub_path)
     hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path)
     hf_processor.push_to_hub(cfg.output_hf_model_hub_path)

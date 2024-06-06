@@ -5,33 +5,43 @@ HuggingFace-style configuration definition for Prismatic VLMs, inheriting from `
 Default configuration specifies `siglip-224px+7b`.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from transformers import PretrainedConfig
 from transformers.models.auto import CONFIG_MAPPING
 
 # === Utilities for Mapping Prismatic names to HF names ===
 # fmt: off
-VISION_BACKBONE_TO_RESOLUTION = {
-    "clip-vit-l": 224, "siglip-vit-so400m": 224, "dinov2-vit-l": 224, "in1k-vit-l": 224, "dinosiglip-vit-so-224px": 224,
+VISION_BACKBONE_TO_RESOLUTION: Dict[str, List[int]] = {
+    "clip-vit-l": [224], "siglip-vit-so400m": [224], "dinov2-vit-l": [224], "in1k-vit-l": [224],
 
-    "clip-vit-l-336px": 336,
-    "siglip-vit-so400m-384px": 384,
+    "clip-vit-l-336px": [336],
+    "siglip-vit-so400m-384px": [384],
 
-    "dinoclip-vit-l-336px": 336,
-    "dinosiglip-vit-so-384px": 384,
+    "dinoclip-vit-l-336px": [336, 336],
+    "dinosiglip-vit-so-224px": [224, 224],
+    "dinosiglip-vit-so-384px": [384, 384],
 }
-VISION_BACKBONE_TO_TIMM_ID = {
-    "clip-vit-l": "vit_large_patch14_clip_224.openai",
-    "clip-vit-l-336px": "vit_large_patch14_clip_336.openai",
-    "dinov2-vit-l": "vit_large_patch14_reg4_dinov2.lvd142m",
-    "in1k-vit-l": "vit_large_patch16_224.augreg_in21k_ft_in1k",
-    "siglip-vit-so400m": "vit_so400m_patch14_siglip_224",
-    "siglip-vit-so400m-384px": "vit_so400m_patch14_siglip_384",
+VISION_BACKBONE_TO_TIMM_ID: Dict[str, List[str]] = {
+    "clip-vit-l": ["vit_large_patch14_clip_224.openai"],
+    "clip-vit-l-336px": ["vit_large_patch14_clip_336.openai"],
+
+    "dinov2-vit-l": ["vit_large_patch14_reg4_dinov2.lvd142m"],
+    "in1k-vit-l": ["vit_large_patch16_224.augreg_in21k_ft_in1k"],
+
+    "siglip-vit-so400m": ["vit_so400m_patch14_siglip_224"],
+    "siglip-vit-so400m-384px": ["vit_so400m_patch14_siglip_384"],
+
+    "dinoclip-vit-l-336px": ["vit_large_patch14_reg4_dinov2.lvd142m", "vit_large_patch14_clip_336.openai"],
+    "dinosiglip-vit-so-224px": ["vit_large_patch14_reg4_dinov2.lvd142m", "vit_so400m_patch14_siglip_224"],
+    "dinosiglip-vit-so-384px": ["vit_large_patch14_reg4_dinov2.lvd142m", "vit_so400m_patch14_siglip_384"],
 }
-TIMM_OVERRIDE_ACT_LAYER = {
-    "clip-vit-l": "quick_gelu", "clip-vit-l-336px": "quick_gelu",
-    "siglip-vit-so400m": None, "siglip-vit-so400m-384px": None, "dinov2-vit-l": None, "in1k-vit-l": None,
+TIMM_OVERRIDE_ACT_LAYER: Dict[str, List[Optional[str]]] = {
+    "clip-vit-l": ["quick_gelu"], "clip-vit-l-336px": ["quick_gelu"],
+    "dinov2-vit-l": [None], "in1k-vit-l": [None],
+    "siglip-vit-so400m": [None], "siglip-vit-so400m-384px": [None],
+    "dinoclip-vit-l-336px": [None, "quick_gelu"],
+    "dinosiglip-vit-so-224px": [None, None], "dinosiglip-vit-so-384px": [None, None]
 }
 
 LLM_BACKBONE_TO_HF_PATH = {
@@ -87,13 +97,12 @@ class PrismaticConfig(PretrainedConfig):
         self.arch_specifier = arch_specifier
         self.output_projector_states = output_projector_states
 
-        # TODO (siddk) :: Add proper support for fused backbones...
-        if ("dinoclip" in self.vision_backbone_id) or ("dinosiglip" in self.vision_backbone_id):
-            raise NotImplementedError("Support for fused backbones is not yet implemented!")
+        # [Contract] All vision backbone parameters are lists =>> supports fused backbones with different preprocessing
+        self.use_fused_vision_backbone = any(self.vision_backbone_id.startswith(v) for v in ["dinoclip", "dinosiglip"])
 
-        self.timm_model_id = VISION_BACKBONE_TO_TIMM_ID[self.vision_backbone_id]
-        self.timm_override_act_layer = TIMM_OVERRIDE_ACT_LAYER[self.vision_backbone_id]
-        self.image_size = VISION_BACKBONE_TO_RESOLUTION[self.vision_backbone_id]
+        self.timm_model_ids = VISION_BACKBONE_TO_TIMM_ID[self.vision_backbone_id]
+        self.timm_override_act_layers = TIMM_OVERRIDE_ACT_LAYER[self.vision_backbone_id]
+        self.image_sizes = VISION_BACKBONE_TO_RESOLUTION[self.vision_backbone_id]
         self.image_resize_strategy = image_resize_strategy
 
         self.hf_llm_id = LLM_BACKBONE_TO_HF_PATH[self.llm_backbone_id]

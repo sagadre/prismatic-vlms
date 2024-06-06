@@ -4,28 +4,39 @@ verify_hf.py
 Given an HF-exported Prismatic model, attempt to load via AutoClasses, and verify forward() and generate().
 """
 
+import time
+
 import requests
 import torch
-import time
 from PIL import Image
-from transformers import AutoModelForVision2Seq, AutoProcessor, BitsAndBytesConfig
+from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor
 
 # === Verification Arguments ===
-MODEL_PATH = "TRI-ML/prismatic-siglip-224px-7b"
+MODEL_PATH = "TRI-ML/prismatic-prism-dinosiglip-224px-7b"
 DEFAULT_IMAGE_URL = (
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png"
 )
-SYSTEM_PROMPT = (
-    "A chat between a curious user and an artificial intelligence assistant. "
-    "The assistant gives helpful, detailed, and polite answers to the user's questions."
-)
-SAMPLE_PROMPTS_FOR_GENERATION = [
-    f"{SYSTEM_PROMPT} USER: What is sitting in the coffee? ASSISTANT:",
-    f"{SYSTEM_PROMPT} USER: What's the name of the food on the plate? ASSISTANT:",
-    f"{SYSTEM_PROMPT} USER: caption. ASSISTANT:",
-    f"{SYSTEM_PROMPT} USER: how many beinets..? ASSISTANT:",
-    f"{SYSTEM_PROMPT} USER: Can you give me a lyrical description of the scene ASSISTANT:",
-]
+
+if "-prism-" in MODEL_PATH:
+    SAMPLE_PROMPTS_FOR_GENERATION = [
+        "In: What is sitting in the coffee?\nOut:",
+        "In: What's the name of the food on the plate?\nOut:",
+        "In: caption.\nOut:",
+        "In: how many beinets..?\nOut:",
+        "In: Can you give me a lyrical description of the scene\nOut:",
+    ]
+else:
+    SYSTEM_PROMPT = (
+        "A chat between a curious user and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the user's questions."
+    )
+    SAMPLE_PROMPTS_FOR_GENERATION = [
+        f"{SYSTEM_PROMPT} USER: What is sitting in the coffee? ASSISTANT:",
+        f"{SYSTEM_PROMPT} USER: What's the name of the food on the plate? ASSISTANT:",
+        f"{SYSTEM_PROMPT} USER: caption. ASSISTANT:",
+        f"{SYSTEM_PROMPT} USER: how many beinets..? ASSISTANT:",
+        f"{SYSTEM_PROMPT} USER: Can you give me a lyrical description of the scene ASSISTANT:",
+    ]
 
 
 @torch.inference_mode()
@@ -53,6 +64,7 @@ def verify_hf() -> None:
     print("[*] Loading in BF16 with Flash-Attention Enabled")
     vlm = AutoModelForVision2Seq.from_pretrained(
         MODEL_PATH,
+        config=AutoConfig.from_pretrained(MODEL_PATH, trust_remote_code=True),
         attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
