@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForVision2Seq, AutoProcessor
 
-# VLA params
+# VLA Parameters
 MODEL_PATH = "openvla/openvla-7b-v01"
 SYSTEM_PROMPT = (
     "A chat between a curious user and an artificial intelligence assistant. "

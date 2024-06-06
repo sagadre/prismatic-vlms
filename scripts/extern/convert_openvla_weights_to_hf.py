@@ -31,12 +31,12 @@ from prismatic.extern.hf_prismatic.processing_prismatic import PrismaticImagePro
 class HFConvertConfig:
     # fmt: off
     openvla_model_path_or_id: Union[str, Path] = (                      # Path to Pretrained VLA (on disk or HF Hub)
-        "pretrained/siglip-224px+mx-oxe-magic-soup+n8+b32+x7"
+        "/mnt/fsx/x-openvla/prism-dinosiglip-224px+mx-oxe-magic-soup-plus+n8+b32+x7"
     )
     output_hf_model_local_path: Path = Path(                            # Path to Local Path to save HF model
-        "/raid/users/karl/models/huggingface/openvla-7b-v01"
+        "/mnt/fsx/x-openvla/hf-convert/openvla-7b"
     )
-    output_hf_model_hub_path: str = "openvla/openvla-7b-v01"            # Path to HF Hub Path for "final" HF model
+    output_hf_model_hub_path: str = "openvla/openvla-7b"                # Path to HF Hub Path for "final" HF model
                                                                         #   => huggingface.co/openvla/openvla-{...}
 
     # HF Hub Credentials (required for Gated Models like LLaMa-2)
@@ -54,20 +54,19 @@ PROJECTOR_KEY_MAPPING = {
     "projector.0.bias": "projector.fc1.bias",
     "projector.2.weight": "projector.fc2.weight",
     "projector.2.bias": "projector.fc2.bias",
+    "projector.4.weight": "projector.fc3.weight",
+    "projector.4.bias": "projector.fc3.bias",
 }
 
 
 def remap_state_dicts_for_hf(
-    vision_backbone_state_dict: Dict[str, torch.Tensor],
+    prismatic_vision_backbone_state_dict: Dict[str, torch.Tensor],
     projector_state_dict: Dict[str, torch.Tensor],
     llm_backbone_state_dict: Dict[str, torch.Tensor],
+    use_fused_vision_backbone: bool = False,
 ) -> Dict[str, torch.Tensor]:
     """Iterate through Prismatic component state dictionaries and unify / fix key mapping for HF conversion."""
     hf_state_dict = {}
-
-    # Iterate through Vision Backbone =>> add "vision_backbone." prefix
-    for key, value in vision_backbone_state_dict.items():
-        hf_state_dict[key.replace("featurizer.", "vision_backbone.")] = value
 
     # Iterate through Projector =>> use `PROJECTOR_KEY_MAPPING`
     for key, value in projector_state_dict.items():
@@ -76,6 +75,18 @@ def remap_state_dicts_for_hf(
     # Iterate through LLM Backbone =>> replace `llm.` with `language_model.`
     for key, value in llm_backbone_state_dict.items():
         hf_state_dict[key.replace("llm.", "language_model.")] = value
+
+    # Iterate through Vision Backbone =>> add "vision_backbone." prefix
+    if not use_fused_vision_backbone:
+        for key, value in prismatic_vision_backbone_state_dict.items():
+            hf_state_dict[key.replace("featurizer.", "vision_backbone.")] = value
+    else:
+        # TODO (siddk) =>> Assumes that backbones are always DINO + SigLIP...
+        for key, value in prismatic_vision_backbone_state_dict.items():
+            if key.startswith("dino_featurizer"):
+                hf_state_dict[key.replace("dino_featurizer.", "vision_backbone.featurizer_alpha.")] = value
+            elif key.startswith("siglip_featurizer"):
+                hf_state_dict[key.replace("siglip_featurizer.", "vision_backbone.featurizer_beta.")] = value
 
     return hf_state_dict
 
@@ -109,7 +120,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
         vla_cfg = json.load(f)["vla"]
         prismatic_config = ModelConfig.get_choice_class(vla_cfg["base_vlm"])().__dict__
 
-    # Load normalization statistics
+    # Load Normalization Statistics
     with open(dataset_statistics_json, "r") as f:
         norm_stats = json.load(f)
 
@@ -143,23 +154,32 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
 
     # Create Vision Backbone & Transform =>> following `prismatic.models.materialize.get_vision_backbone_and_transform`
     #   =>> Deviates a bit from existing code; as such, explicitly tested in `tests/test_image_transforms.py`
-    print("[*] Loading TIMM Vision Backbone and Image Transform =>> Initializing PrismaticImageProcessor")
-    timm_vision_backbone = timm.create_model(
-        hf_config.timm_model_id,
-        pretrained=True,
-        num_classes=0,
-        img_size=hf_config.image_size,
-        act_layer=hf_config.timm_override_act_layer,
-    )
-    data_cfg = timm.data.resolve_model_data_config(timm_vision_backbone)
+    print("[*] Loading TIMM Vision Backbone(s) and Image Transform(s) =>> Initializing PrismaticImageProcessor")
+    input_sizes, interpolations, means, stds = [], [], [], []
+    for idx, timm_model_id in enumerate(hf_config.timm_model_ids):
+        timm_vision_backbone = timm.create_model(
+            timm_model_id,
+            pretrained=True,
+            num_classes=0,
+            img_size=hf_config.image_sizes[idx],
+            act_layer=hf_config.timm_override_act_layers[idx],
+        )
+
+        # Get Per-Backbone Image Processing
+        data_cfg = timm.data.resolve_model_data_config(timm_vision_backbone)
+        input_sizes.append((3, hf_config.image_sizes[idx], hf_config.image_sizes[idx]))
+        interpolations.append(data_cfg["interpolation"])
+        means.append(data_cfg["mean"])
+        stds.append(data_cfg["std"])
 
     # Create PrismaticImageProcessor (`transformers.ImageProcessingMixin`)
     hf_image_processor = PrismaticImageProcessor(
+        use_fused_vision_backbone=hf_config.use_fused_vision_backbone,
         image_resize_strategy=hf_config.image_resize_strategy,
-        input_size=data_cfg["input_size"],
-        interpolation=data_cfg["interpolation"],
-        mean=data_cfg["mean"],
-        std=data_cfg["std"],
+        input_sizes=input_sizes,
+        interpolations=interpolations,
+        means=means,
+        stds=stds,
     )
 
     # Create top-level PrismaticProcessor (`transformers.ProcessorMixin` =>> enables registry w/ AutoProcessor)
@@ -170,16 +190,15 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     print("[*] Loading Prismatic VLM State Dictionary from Checkpoint")
     model_state_dict = torch.load(checkpoint_pt, map_location="cpu")["model"]
     assert ("downsampler" not in model_state_dict) or (len(model_state_dict["downsampler"]) == 0), "Downsampler?"
-    assert (
-        ("vision_backbone" in model_state_dict)
-        and ("projector" in model_state_dict)
-        and ("llm_backbone" in model_state_dict)
-    ), "Missing keys!"
+    assert all([k in model_state_dict for k in ["vision_backbone", "projector", "llm_backbone"]]), "Missing keys!"
 
     # Convert
     print("[*] Running Conversion")
     converted_state_dict = remap_state_dicts_for_hf(
-        model_state_dict["vision_backbone"], model_state_dict["projector"], model_state_dict["llm_backbone"]
+        model_state_dict["vision_backbone"],
+        model_state_dict["projector"],
+        model_state_dict["llm_backbone"],
+        use_fused_vision_backbone=hf_config.use_fused_vision_backbone,
     )
 
     # Create PrismaticForConditionalGeneration =>> Note that we can't initialize on `meta` device because TIMM
@@ -187,7 +206,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     hf_model = OpenVLAForActionPrediction(hf_config)
     hf_model.load_state_dict(converted_state_dict, strict=True, assign=True)
 
-    # Case model to bf16 before saving
+    # Cast Model to BF16 before Saving
     hf_model.to(torch.bfloat16)
 
     # Save Pretrained Versions to Local Path
@@ -196,17 +215,18 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     hf_image_processor.save_pretrained(cfg.output_hf_model_local_path)
     hf_processor.save_pretrained(cfg.output_hf_model_local_path)
 
-    # Register AutoClasses
-    OpenVLAConfig.register_for_auto_class()
-    PrismaticImageProcessor.register_for_auto_class("AutoImageProcessor")
-    PrismaticProcessor.register_for_auto_class("AutoProcessor")
-    OpenVLAForActionPrediction.register_for_auto_class("AutoModelForVision2Seq")
-
-    # Push to Hub
-    print("[*] Pushing Model & Processor to HF Hub")
-    hf_model.push_to_hub(cfg.output_hf_model_hub_path, private=True)
-    hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
-    hf_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    # # Register AutoClasses
+    # OpenVLAConfig.register_for_auto_class()
+    # PrismaticImageProcessor.register_for_auto_class("AutoImageProcessor")
+    # PrismaticProcessor.register_for_auto_class("AutoProcessor")
+    # OpenVLAForActionPrediction.register_for_auto_class("AutoModelForVision2Seq")
+    #
+    # # Push to Hub
+    # print("[*] Pushing Model & Processor to HF Hub")
+    # hf_config.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    # hf_model.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    # hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    # hf_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
 
 
 if __name__ == "__main__":

@@ -129,6 +129,5 @@ class OpenVLAConfig(PrismaticConfig):
         n_action_bins: int = 256,
         **kwargs: str,
     ) -> None:
-        self.norm_stats = norm_stats
-        self.n_action_bins = n_action_bins
+        self.norm_stats, self.n_action_bins = norm_stats, n_action_bins
         super().__init__(**kwargs)
