@@ -9,9 +9,10 @@ import time
 import requests
 import torch
 from PIL import Image
-from transformers import AutoConfig, AutoModelForVision2Seq, AutoProcessor
+from transformers import AutoModelForVision2Seq, AutoProcessor
 
 # === Verification Arguments ===
+# MODEL_PATH = "TRI-ML/prismatic-siglip-224px-7b"
 MODEL_PATH = "TRI-ML/prismatic-prism-dinosiglip-224px-7b"
 DEFAULT_IMAGE_URL = (
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png"
@@ -40,7 +41,7 @@ else:
 
 
 @torch.inference_mode()
-def verify_hf() -> None:
+def verify_prismatic() -> None:
     print(f"[*] Verifying PrismaticForConditionalGeneration using Model `{MODEL_PATH}`")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
@@ -64,7 +65,6 @@ def verify_hf() -> None:
     print("[*] Loading in BF16 with Flash-Attention Enabled")
     vlm = AutoModelForVision2Seq.from_pretrained(
         MODEL_PATH,
-        config=AutoConfig.from_pretrained(MODEL_PATH, trust_remote_code=True),
         attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
@@ -87,8 +87,8 @@ def verify_hf() -> None:
     # vlm = AutoModelForVision2Seq.from_pretrained(
     #     MODEL_PATH,
     #     attn_implementation="flash_attention_2",
-    #     torch_dtype=torch.bfloat16,
-    #     load_in_4bit=True,
+    #     torch_dtype=torch.float16,
+    #     quantization_config=BitsAndBytesConfig(load_in_4bit=True),
     #     low_cpu_mem_usage=True,
     #     trust_remote_code=True,
     # )
@@ -136,4 +136,4 @@ def verify_hf() -> None:
 
 
 if __name__ == "__main__":
-    verify_hf()
+    verify_prismatic()

@@ -12,18 +12,26 @@ References [LLaVa, IDEFICS-2]:
     => https://github.com/huggingface/transformers/blob/main/src/transformers/models/idefics2/modeling_idefics2.py
 """
 
+import logging
 from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import timm
+import tokenizers
 import torch
 import torch.nn as nn
+import transformers
+from timm.models.vision_transformer import LayerScale
 from transformers import AutoModelForCausalLM, PretrainedConfig, PreTrainedModel
 from transformers.modeling_outputs import ModelOutput
 
 from .configuration_prismatic import OpenVLAConfig, PrismaticConfig
+
+# Get Logger
+logger = logging.getLogger(__name__)
+
 
 # === PyTorch/HuggingFace Default IGNORE_INDEX (for CrossEntropyLoss labels)
 IGNORE_INDEX = -100
@@ -38,52 +46,81 @@ def unpack_tuple(fn: Callable[[Any], Tuple[Any]]) -> Callable[[Any], Any]:
     return wrapper
 
 
+# HF Transformers overwrites parameters with names containing `gamma`; we're going to patch VisionBackbone.LayerScale.
+#   =>> TIMM :: https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py#L109
+#   =>> Transformers :: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L3960
+def _ls_new_forward(self, x: torch.Tensor) -> torch.Tensor:
+    return x.mul_(self.scale_factor) if self.inplace else x * self.scale_factor
+
+
+def ls_apply_patch(ls_module: LayerScale):
+    ls_module.scale_factor = nn.Parameter(ls_module.gamma.clone())
+    ls_module.forward = _ls_new_forward.__get__(ls_module, LayerScale)
+    del ls_module.gamma
+
+
 # === Prismatic Vision Backbone (nn.Module) Definitions (w/ Fused Backbone Support) ===
 class PrismaticVisionBackbone(nn.Module):
-    def __init__(self, config: PrismaticConfig) -> None:
+    def __init__(
+        self,
+        use_fused_vision_backbone: bool,
+        image_sizes: List[int],
+        timm_model_ids: List[str],
+        timm_override_act_layers: List[Optional[str]],
+    ) -> None:
         super().__init__()
-        self.use_fused_vision_backbone = config.use_fused_vision_backbone
+        self.use_fused_vision_backbone = use_fused_vision_backbone
 
         # [Contract] Validate number of (fused) vision backbones, create "alpha" featurizer and Instantiate
         #   =>> Note :: Monkey-Patch the `forward()` function of the backbone to ensure FSDP-compatibility
         #               Hardcodes `get_intermediate_layers` to return the **SECOND-TO-LAST** layer patches!
-        assert len(config.timm_model_ids) <= 2, "Prismatic models only support up to 2 (fused) vision backbones!"
-        self.featurizer_alpha = timm.create_model(
-            config.timm_model_ids[0],
+        assert len(timm_model_ids) <= 2, "Prismatic models only support up to 2 (fused) vision backbones!"
+        self.featurizer = timm.create_model(
+            timm_model_ids[0],
             pretrained=False,
             num_classes=0,
-            img_size=config.image_sizes[0],
-            act_layer=config.timm_override_act_layers[0],
+            img_size=image_sizes[0],
+            act_layer=timm_override_act_layers[0],
         )
-        self.featurizer_alpha.forward = unpack_tuple(
-            partial(self.featurizer_alpha.get_intermediate_layers, n={len(self.featurizer_alpha.blocks) - 2})
+        self.featurizer.forward = unpack_tuple(
+            partial(self.featurizer.get_intermediate_layers, n={len(self.featurizer.blocks) - 2})
         )
-        self.embed_dim = self.featurizer_alpha.embed_dim
+        self.embed_dim = self.featurizer.embed_dim
 
         # If `use_fused_vision_backbone` =>> create "beta" featurizer
         if self.use_fused_vision_backbone:
-            self.featurizer_beta = timm.create_model(
-                config.timm_model_ids[1],
+            self.fused_featurizer = timm.create_model(
+                timm_model_ids[1],
                 pretrained=False,
                 num_classes=0,
-                img_size=config.image_sizes[1],
-                act_layer=config.timm_override_act_layers[1],
+                img_size=image_sizes[1],
+                act_layer=timm_override_act_layers[1],
             )
-            self.featurizer_beta.forward = unpack_tuple(
-                partial(self.featurizer_beta.get_intermediate_layers, n={len(self.featurizer_beta.blocks) - 2})
+            self.fused_featurizer.forward = unpack_tuple(
+                partial(self.fused_featurizer.get_intermediate_layers, n={len(self.fused_featurizer.blocks) - 2})
             )
-            self.embed_dim += self.featurizer_beta.embed_dim
+            self.embed_dim += self.fused_featurizer.embed_dim
+
+        # Patch `vision_backbone.featurizer` and `vision_backbone.fused_featurizer` with HF-Compatible LayerScale
+        for module in self.featurizer.modules():
+            if isinstance(module, LayerScale):
+                ls_apply_patch(module)
+
+        if self.use_fused_vision_backbone:
+            for module in self.fused_featurizer.modules():
+                if isinstance(module, LayerScale):
+                    ls_apply_patch(module)
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         """Run image (`pixel_values`) through featurizer; if channel-stacked, then dispatch and sequence stack."""
         if not self.use_fused_vision_backbone:
-            return self.featurizer_alpha(pixel_values)
+            return self.featurizer(pixel_values)
 
         # Split `pixel_values :: [bsz, 2 * 3, resolution, resolution]` =>> featurize =>> channel stack
-        img_alpha, img_beta = torch.split(pixel_values, [3, 3], dim=1)
-        patches_alpha, patches_beta = self.featurizer_alpha(img_alpha), self.featurizer_beta(img_beta)
+        img, img_fused = torch.split(pixel_values, [3, 3], dim=1)
+        patches, patches_fused = self.featurizer(img), self.fused_featurizer(img_fused)
 
-        return torch.cat([patches_alpha, patches_beta], dim=2)
+        return torch.cat([patches, patches_fused], dim=2)
 
 
 # === Prismatic Projector (nn.Module) Definitions ===
@@ -177,8 +214,28 @@ class PrismaticForConditionalGeneration(PrismaticPreTrainedModel):
     def __init__(self, config: PrismaticConfig) -> None:
         super().__init__(config)
 
+        # [Validation] Lightweight Validate on `config` Fields + Dependency Versions
+        if config.use_fused_vision_backbone is None:
+            raise ValueError("Missing config field `use_fused_vision_backbone`")
+
+        if timm.__version__ not in {"0.9.10", "0.9.11", "0.9.12", "0.9.16"}:
+            raise NotImplementedError(
+                "TIMM Version must be >= 0.9.10 and < 1.0.0 (breaking); please raise a GitHub Issue "
+                "if you urgently need support for latest TIMM versions."
+            )
+
+        if (transformers.__version__ != "4.40.1") or (tokenizers.__version__ != "0.19.1"):
+            logger.warning(
+                f"Expected `transformers==4.40.1` and `tokenizers==0.19.1` but got "
+                f"`transformers=={transformers.__version__}` and `tokenizers=={tokenizers.__version__}`; "
+                f"there might be inference-time regressions due to dependency changes. If in doubt, please"
+                f"use the above versions."
+            )
+
         # Instantiate PrismaticVisionBackbone (w/ Potential Fused Backbone)
-        self.vision_backbone = PrismaticVisionBackbone(config)
+        self.vision_backbone = PrismaticVisionBackbone(
+            config.use_fused_vision_backbone, config.image_sizes, config.timm_model_ids, config.timm_override_act_layers
+        )
 
         # Create Multimodal Projector
         self.projector = PrismaticProjector(

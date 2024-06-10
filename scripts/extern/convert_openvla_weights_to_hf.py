@@ -18,7 +18,9 @@ from typing import Dict, Union
 import draccus
 import timm
 import torch
+import torch.nn as nn
 from huggingface_hub import hf_hub_download
+from timm.models.vision_transformer import LayerScale
 from transformers import AutoTokenizer
 
 from prismatic.conf import ModelConfig
@@ -31,7 +33,8 @@ from prismatic.extern.hf_prismatic.processing_prismatic import PrismaticImagePro
 class HFConvertConfig:
     # fmt: off
     openvla_model_path_or_id: Union[str, Path] = (                      # Path to Pretrained VLA (on disk or HF Hub)
-        "/mnt/fsx/x-openvla/prism-dinosiglip-224px+mx-oxe-magic-soup-plus+n8+b32+x7"
+        # "/mnt/fsx/x-openvla/runs/siglip-224px+mx-oxe-magic-soup+n8+b32+x7"
+        "/mnt/fsx/x-openvla/runs/prism-dinosiglip-224px+mx-oxe-magic-soup-plus+n8+b32+x7"
     )
     output_hf_model_local_path: Path = Path(                            # Path to Local Path to save HF model
         "/mnt/fsx/x-openvla/hf-convert/openvla-7b"
@@ -46,6 +49,19 @@ class HFConvertConfig:
         self.hf_token = self.hf_token.read_text().strip() if isinstance(self.hf_token, Path) else self.hf_token
 
     # fmt: on
+
+
+# HF Transformers overwrites parameters with names containing `gamma`; we're going to patch VisionBackbone.LayerScale.
+#   =>> TIMM :: https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py#L109
+#   =>> Transformers :: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L3960
+def _ls_new_forward(self, x: torch.Tensor) -> torch.Tensor:
+    return x.mul_(self.scale_factor) if self.inplace else x * self.scale_factor
+
+
+def ls_apply_patch(ls_module: LayerScale):
+    ls_module.scale_factor = nn.Parameter(ls_module.gamma.clone())
+    ls_module.forward = _ls_new_forward.__get__(ls_module, LayerScale)
+    del ls_module.gamma
 
 
 # === Conversion Constants ===
@@ -79,20 +95,23 @@ def remap_state_dicts_for_hf(
     # Iterate through Vision Backbone =>> add "vision_backbone." prefix
     if not use_fused_vision_backbone:
         for key, value in prismatic_vision_backbone_state_dict.items():
-            hf_state_dict[key.replace("featurizer.", "vision_backbone.")] = value
+            hf_state_dict[key.replace("featurizer.", "vision_backbone.featurizer.")] = value
     else:
         # TODO (siddk) =>> Assumes that backbones are always DINO + SigLIP...
         for key, value in prismatic_vision_backbone_state_dict.items():
             if key.startswith("dino_featurizer"):
-                hf_state_dict[key.replace("dino_featurizer.", "vision_backbone.featurizer_alpha.")] = value
+                if key.endswith(".gamma"):
+                    # Handle `LayerScale gamma` =>> DINOv2 only!
+                    key = key.replace(".gamma", ".scale_factor")
+                hf_state_dict[key.replace("dino_featurizer.", "vision_backbone.featurizer.")] = value
             elif key.startswith("siglip_featurizer"):
-                hf_state_dict[key.replace("siglip_featurizer.", "vision_backbone.featurizer_beta.")] = value
+                hf_state_dict[key.replace("siglip_featurizer.", "vision_backbone.fused_featurizer.")] = value
 
     return hf_state_dict
 
 
 @draccus.wrap()
-def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
+def convert_openvla_weights_to_hf(cfg: HFConvertConfig) -> None:
     print(f"[*] Converting OpenVLA Model `{cfg.openvla_model_path_or_id}` to HF Transformers Format")
     torch.set_default_dtype(torch.bfloat16)
 
@@ -142,7 +161,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
         hf_config.hf_llm_id, model_max_length=hf_config.llm_max_length, token=cfg.hf_token, padding_side="right"
     )
     tokenizer.add_special_tokens({"pad_token": "<PAD>"})
-    tokenizer.init_kwargs.pop("add_prefix_space")  # Pop to prevent unnecessary warning on reload...
+    tokenizer.init_kwargs.pop("add_prefix_space", None)  # Pop to prevent unnecessary warning on reload...
     assert tokenizer.pad_token_id == hf_config.pad_token_id, "Incorrect Pad Token ID!"
     assert len(tokenizer) > hf_config.text_config.vocab_size, "Tokenizer vocabulary must be larger than LLM vocabulary!"
 
@@ -171,6 +190,11 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
         interpolations.append(data_cfg["interpolation"])
         means.append(data_cfg["mean"])
         stds.append(data_cfg["std"])
+
+        # Patch `LayerScale` because of HF annoying `fix_key` overwrite...
+        for module in timm_vision_backbone.modules():
+            if isinstance(module, LayerScale):
+                ls_apply_patch(module)
 
     # Create PrismaticImageProcessor (`transformers.ImageProcessingMixin`)
     hf_image_processor = PrismaticImageProcessor(
@@ -211,23 +235,23 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
 
     # Save Pretrained Versions to Local Path
     print("[*] Saving Model & Processor to Local Path")
-    hf_model.save_pretrained(cfg.output_hf_model_local_path)
+    hf_model.save_pretrained(cfg.output_hf_model_local_path, max_shard_size="7GB")
     hf_image_processor.save_pretrained(cfg.output_hf_model_local_path)
     hf_processor.save_pretrained(cfg.output_hf_model_local_path)
 
-    # # Register AutoClasses
-    # OpenVLAConfig.register_for_auto_class()
-    # PrismaticImageProcessor.register_for_auto_class("AutoImageProcessor")
-    # PrismaticProcessor.register_for_auto_class("AutoProcessor")
-    # OpenVLAForActionPrediction.register_for_auto_class("AutoModelForVision2Seq")
-    #
-    # # Push to Hub
-    # print("[*] Pushing Model & Processor to HF Hub")
-    # hf_config.push_to_hub(cfg.output_hf_model_hub_path, private=True)
-    # hf_model.push_to_hub(cfg.output_hf_model_hub_path, private=True)
-    # hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
-    # hf_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    # Register AutoClasses
+    OpenVLAConfig.register_for_auto_class()
+    PrismaticImageProcessor.register_for_auto_class("AutoImageProcessor")
+    PrismaticProcessor.register_for_auto_class("AutoProcessor")
+    OpenVLAForActionPrediction.register_for_auto_class("AutoModelForVision2Seq")
+
+    # Push to Hub
+    print("[*] Pushing Model & Processor to HF Hub")
+    hf_config.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    hf_model.push_to_hub(cfg.output_hf_model_hub_path, private=True, max_shard_size="7GB")
+    hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
+    hf_processor.push_to_hub(cfg.output_hf_model_hub_path, private=True)
 
 
 if __name__ == "__main__":
-    convert_prismatic_weights_to_hf()
+    convert_openvla_weights_to_hf()

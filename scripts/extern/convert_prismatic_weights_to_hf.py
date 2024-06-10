@@ -18,7 +18,9 @@ from typing import Dict, List, Union
 import draccus
 import timm
 import torch
+import torch.nn as nn
 from huggingface_hub import hf_hub_download
+from timm.models.vision_transformer import LayerScale
 from transformers import AutoTokenizer
 
 from prismatic.extern.hf_prismatic.configuration_prismatic import PrismaticConfig
@@ -30,13 +32,16 @@ from prismatic.extern.hf_prismatic.processing_prismatic import PrismaticImagePro
 class HFConvertConfig:
     # fmt: off
     prismatic_model_path_or_id: Union[str, Path] = (                    # Path to Pretrained VLM (on disk or HF Hub)
-        "prism-dinosiglip-224px+7b"
+        "siglip-224px+7b"
+        # "prism-dinosiglip-224px+7b"
     )
     output_hf_model_local_path: Path = Path(                            # Path to Local Path to save HF model
-        "/mnt/fsx/x-prismatic-vlms/hf-convert/prismatic-prism-dinosiglip-224px-7b"
+        "/mnt/fsx/x-prismatic-vlms/hf-convert/prismatic-siglip-224px-7b"
+        # "/mnt/fsx/x-prismatic-vlms/hf-convert/prismatic-prism-dinosiglip-224px-7b"
     )
     output_hf_model_hub_path: str = (                                   # Path to HF Hub Path for "final" HF model
-        "TRI-ML/prismatic-prism-dinosiglip-224px-7b"                    #   => huggingface.co/TRI-ML/prismatic-{...}
+        "TRI-ML/prismatic-siglip-224px-7b"                              #   => huggingface.co/TRI-ML/prismatic-{...}
+        # "TRI-ML/prismatic-prism-dinosiglip-224px-7b"
     )
 
     # HF Hub Credentials (required for Gated Models like LLaMa-2)
@@ -46,6 +51,19 @@ class HFConvertConfig:
         self.hf_token = self.hf_token.read_text().strip() if isinstance(self.hf_token, Path) else self.hf_token
 
     # fmt: on
+
+
+# HF Transformers overwrites parameters with names containing `gamma`; we're going to patch VisionBackbone.LayerScale.
+#   =>> TIMM :: https://github.com/huggingface/pytorch-image-models/blob/main/timm/models/vision_transformer.py#L109
+#   =>> Transformers :: https://github.com/huggingface/transformers/blob/main/src/transformers/modeling_utils.py#L3960
+def _ls_new_forward(self, x: torch.Tensor) -> torch.Tensor:
+    return x.mul_(self.scale_factor) if self.inplace else x * self.scale_factor
+
+
+def ls_apply_patch(ls_module: LayerScale):
+    ls_module.scale_factor = nn.Parameter(ls_module.gamma.clone())
+    ls_module.forward = _ls_new_forward.__get__(ls_module, LayerScale)
+    del ls_module.gamma
 
 
 # === Conversion Constants ===
@@ -78,7 +96,7 @@ def remap_state_dicts_for_hf(
     # Iterate through Vision Backbone =>> add "vision_backbone." prefix
     assert len(vision_backbone_state_dicts) <= 2, "Prismatic models only support up to 2 (fused) vision backbones!"
     for idx, vision_backbone_state_dict in enumerate(vision_backbone_state_dicts):
-        prefix = "vision_backbone.featurizer_alpha" if idx == 0 else "vision_backbone.featurizer_beta"
+        prefix = "vision_backbone.featurizer" if idx == 0 else "vision_backbone.fused_featurizer"
         for key, value in vision_backbone_state_dict.items():
             hf_state_dict[f"{prefix}.{key}"] = value
 
@@ -156,6 +174,11 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
         means.append(data_cfg["mean"])
         stds.append(data_cfg["std"])
 
+        # Patch `LayerScale` because of HF annoying `fix_key` overwrite...
+        for module in timm_vision_backbone.modules():
+            if isinstance(module, LayerScale):
+                ls_apply_patch(module)
+
     # Create PrismaticImageProcessor (`transformers.ImageProcessingMixin`)
     hf_image_processor = PrismaticImageProcessor(
         use_fused_vision_backbone=hf_config.use_fused_vision_backbone,
@@ -189,9 +212,12 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     hf_model = PrismaticForConditionalGeneration(hf_config)
     hf_model.load_state_dict(converted_state_dict, strict=True, assign=True)
 
+    # Cast Model to BF16 before Saving
+    hf_model.to(torch.bfloat16)
+
     # Save Pretrained Versions to Local Path
     print("[*] Saving Model & Processor to Local Path")
-    hf_model.save_pretrained(cfg.output_hf_model_local_path)
+    hf_model.save_pretrained(cfg.output_hf_model_local_path, max_shard_size="7GB")
     hf_image_processor.save_pretrained(cfg.output_hf_model_local_path)
     hf_processor.save_pretrained(cfg.output_hf_model_local_path)
 
@@ -204,7 +230,7 @@ def convert_prismatic_weights_to_hf(cfg: HFConvertConfig) -> None:
     # Push to Hub
     print("[*] Pushing Model & Processor to HF Hub")
     hf_config.push_to_hub(cfg.output_hf_model_hub_path)
-    hf_model.push_to_hub(cfg.output_hf_model_hub_path)
+    hf_model.push_to_hub(cfg.output_hf_model_hub_path, max_shard_size="7GB")
     hf_image_processor.push_to_hub(cfg.output_hf_model_hub_path)
     hf_processor.push_to_hub(cfg.output_hf_model_hub_path)
 

@@ -78,6 +78,7 @@ class PrismaticConfig(PretrainedConfig):
         vision_backbone_id: str = "siglip-vit-so400m",
         llm_backbone_id: str = "vicuna-v15-7b",
         arch_specifier: str = "no-align+gelu-mlp",
+        use_fused_vision_backbone: Optional[bool] = None,
         image_resize_strategy: str = "letterbox",
         text_config: Optional[Dict[str, Any]] = None,
         llm_max_length: int = 2048,
@@ -93,12 +94,17 @@ class PrismaticConfig(PretrainedConfig):
             raise ValueError(f"LLM backbone `{llm_backbone_id}` not in {VALID_LLM_BACKBONES = }")
 
         # Set Prismatic Configuration Fields
-        self.vision_backbone_id, self.llm_backbone_id = vision_backbone_id, llm_backbone_id
+        self.vision_backbone_id = vision_backbone_id
+        self.llm_backbone_id = llm_backbone_id
         self.arch_specifier = arch_specifier
         self.output_projector_states = output_projector_states
 
         # [Contract] All vision backbone parameters are lists =>> supports fused backbones with different preprocessing
-        self.use_fused_vision_backbone = any(self.vision_backbone_id.startswith(v) for v in ["dinoclip", "dinosiglip"])
+        self.use_fused_vision_backbone = (
+            use_fused_vision_backbone
+            if use_fused_vision_backbone is not None
+            else any(self.vision_backbone_id.startswith(v) for v in ["dinoclip", "dinosiglip"])
+        )
 
         self.timm_model_ids = VISION_BACKBONE_TO_TIMM_ID[self.vision_backbone_id]
         self.timm_override_act_layers = TIMM_OVERRIDE_ACT_LAYER[self.vision_backbone_id]
@@ -130,4 +136,5 @@ class OpenVLAConfig(PrismaticConfig):
         **kwargs: str,
     ) -> None:
         self.norm_stats, self.n_action_bins = norm_stats, n_action_bins
+
         super().__init__(**kwargs)
