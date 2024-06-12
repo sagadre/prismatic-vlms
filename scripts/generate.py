@@ -34,7 +34,7 @@ DEFAULT_IMAGE_URL = (
 class GenerateConfig:
     # fmt: off
     model_path: Union[str, Path] = (                                    # Path to Pretrained VLM (on disk or HF Hub)
-        "prism-dinosiglip+7b"
+        "siglip-224px+7b"
     )
 
     # HF Hub Credentials (required for Gated Models like LLaMa-2)
