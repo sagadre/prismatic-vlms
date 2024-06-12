@@ -65,9 +65,9 @@ def load(
             pretrained=not_from_pretrained_vlm
         )
         if model_id_or_path.startswith("(openvlm)"):
-            print("Loading vision state dict")
+            overwatch.info(f"Loading vision state dict from OpenVLM")
             vision_state_dict = get_vision_state_dict(model_id_or_path)
-            vision_backbone.load_state_dict(vision_state_dict)
+            vision_backbone.load_state_dict(vision_state_dict, strict=True)
 
         llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
             model_id_or_path,
@@ -117,7 +117,8 @@ def load(
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         model_cfg["vision_backbone_id"],
         model_cfg["image_resize_strategy"],
-        # pretrained=False,  # We cannot really know if the vision backbone should be loaded or not here, the weight might or might not be in the checkpoint
+        pretrained=False,  # We cannot really know if the vision backbone should be loaded or not here, the weight might or might not be in the checkpoint
+        dino_first=not model_cfg['llm_backbone_id'].startswith("(openvlm)"),
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`

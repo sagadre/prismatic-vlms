@@ -146,8 +146,9 @@ def pretrain(cfg: PretrainConfig) -> None:
             json.dump(yaml_cfg, f_json, indent=2)
 
     # Load Vision Backbone --> on CPU, in Full Precision (initializing model, image_transform via TIMM)
-    overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")
     not_openvlm = not cfg.model.llm_backbone_id.startswith("(openvlm)")
+    if not_openvlm:
+        overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] via TIMM ")
     vision_backbone, image_transform = get_vision_backbone_and_transform(
         cfg.model.vision_backbone_id, image_resize_strategy=cfg.model.image_resize_strategy, dino_first=not_openvlm, pretrained=not_openvlm
     )
@@ -157,7 +158,7 @@ def pretrain(cfg: PretrainConfig) -> None:
         overwatch.info(f"Loading Vision Backbone [bold]{cfg.model.vision_backbone_id}[/] from OpenVLM Checkpoint")
         # Special Handling for OpenVLM Backbones because it contains vision + language components
         vision_state_dict = get_vision_state_dict(cfg.model.llm_backbone_id)
-        vision_backbone.load_state_dict(vision_state_dict)
+        vision_backbone.load_state_dict(vision_state_dict, strict=True)
         if cfg.pretrained_checkpoint is None:
             load_from = cfg.model.llm_backbone_id
 
@@ -244,7 +245,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     metrics.finalize()
 
     # And... we're done!
-    overwatch.info("Training Complete =>> Exiting")
+    overwatch.info("Training Complete")
     dist.barrier()
     dist.destroy_process_group()
 

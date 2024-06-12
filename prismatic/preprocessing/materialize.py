@@ -38,7 +38,7 @@ def get_dataset_and_collator(
     if stage == "align":
         annotation_json, image_dir = dataset_cfg.align_stage_components
         dataset = dataset_cls(
-            dataset_root_dir / annotation_json, dataset_root_dir / image_dir, image_transform, tokenizer
+            dataset_root_dir / annotation_json, dataset_root_dir / image_dir, image_transform, tokenizer,
         )
         return dataset, collator
 

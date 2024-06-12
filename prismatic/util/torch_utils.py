@@ -22,6 +22,7 @@ from typing import Callable, Optional
 
 import numpy as np
 import torch
+from contextlib import suppress
 
 # === Randomness ===
 
@@ -92,3 +93,7 @@ def check_bloat16_supported() -> bool:
 
     except Exception:
         return False
+
+
+def get_autocast():
+    return torch.cuda.amp.autocast if torch.cuda.is_available() else torch.cpu.amp.autocast
