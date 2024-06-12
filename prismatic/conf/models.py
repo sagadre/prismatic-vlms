@@ -437,6 +437,47 @@ class Prism_13B_DINOSigLIP(Exp_13B_One_Stage):
     finetune_epochs: int = 2
 
 
+# Use OpenLM as a Base LLM Backbone
+@dataclass
+class Openlm_LLaVa(ModelConfig):
+    model_id: str = "openlm"
+    arch_specifier: str = "no-align+fused-gelu-mlp"
+
+    vision_backbone_id: str = "clip-vit-l-336px"
+    llm_backbone_id: str = "openlm"
+
+    image_resize_strategy: str = "letterbox"
+    llm_max_length: int = 2048
+
+    # Align Stage Optimization Parameters
+    align_epochs: int = 1
+    align_max_steps: Optional[int] = None
+    align_global_batch_size: int = 256
+    align_per_device_batch_size: int = 16
+
+    align_learning_rate: float = 1e-3
+    align_weight_decay: float = 0.0
+    align_max_grad_norm: float = 1.0
+    align_lr_scheduler_type: str = "linear-warmup+cosine-decay"
+    align_warmup_ratio: float = 0.03
+
+    align_train_strategy: str = "fsdp-shard-grad-op"
+
+    # Finetune Stage Optimization Parameters
+    finetune_epochs: int = 1
+    finetune_max_steps: Optional[int] = None
+    finetune_global_batch_size: int = 128
+    finetune_per_device_batch_size: int = 16
+
+    finetune_learning_rate: float = 2e-5
+    finetune_weight_decay: float = 0.1
+    finetune_max_grad_norm: float = 1.0
+    finetune_lr_scheduler_type: str = "linear-warmup+cosine-decay"
+    finetune_warmup_ratio: float = 0.03
+
+    finetune_train_strategy: str = "fsdp-full-shard"
+
+
 # === Define a Model Registry Enum for Reference & Validation ===
 @unique
 class ModelRegistry(Enum):
@@ -500,6 +541,9 @@ class ModelRegistry(Enum):
     PRISM_DINOSIGLIP_CONTROLLED_13B = Prism_13B_DINOSigLIP_Controlled
     PRISM_DINOSIGLIP_7B = Prism_7B_DINOSigLIP
     PRISM_DINOSIGLIP_13B = Prism_13B_DINOSigLIP
+
+    # === OpenLM as a Base LLM Backbone ===
+    OPENLM_LLAVA = Openlm_LLaVa
 
     @property
     def model_id(self) -> str:

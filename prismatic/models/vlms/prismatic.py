@@ -90,6 +90,7 @@ class PrismaticVLM(VLM):
         llm_backbone: LLMBackbone,
         enable_mixed_precision_training: bool = True,
         arch_specifier: str = "gelu-mlp",
+        strict: bool = True,
     ) -> PrismaticVLM:
         """Initialize a PrismaticVLM from a pretrained checkpoint, freezing all weights, tailored for inference."""
         vlm = cls(
@@ -106,8 +107,8 @@ class PrismaticVLM(VLM):
             "projector" in model_state_dict and "llm_backbone" in model_state_dict
         ), "PrismaticVLM `from_pretrained` expects checkpoint with keys for `projector` AND `llm_backbone`!"
 
-        vlm.projector.load_state_dict(model_state_dict["projector"])
-        vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"])
+        vlm.projector.load_state_dict(model_state_dict["projector"], strict=strict)
+        vlm.llm_backbone.load_state_dict(model_state_dict["llm_backbone"], strict=strict)
 
         # Freeze Weights
         vlm.requires_grad_(False)
@@ -289,7 +290,6 @@ class PrismaticVLM(VLM):
         # Handle Multimodal Indices is None --> pretend like the batch is fully multimodal (always image + text)!
         if multimodal_indices is None:
             multimodal_indices = torch.arange(len(input_ids), dtype=torch.long, device=input_ids.device)
-
         # Handle Multimodal Indices is Empty (len == 0) --> simple unimodal forward
         elif len(multimodal_indices) == 0:
             return self.llm_backbone(
@@ -429,6 +429,9 @@ class PrismaticVLM(VLM):
             fused_embeddings = torch.vstack([multimodal_embeddings, unimodal_embeddings])
             fused_attention_mask = torch.vstack([multimodal_attention_mask, unimodal_attention_mask])
             fused_labels = torch.vstack([multimodal_labels, unimodal_labels])
+
+        # Don't use a custom mask if it is not needed
+        fused_attention_mask = fused_attention_mask if not fused_attention_mask.all() else None
 
         # Run LLM Forward --> returns CausalLMOutputWithPast!
         return self.llm_backbone(

@@ -45,7 +45,7 @@ def get_model_description(model_id_or_name: str) -> str:
 
 # === Load Pretrained Model ===
 def load(
-    model_id_or_path: Union[str, Path], hf_token: Optional[str] = None, cache_dir: Optional[Union[str, Path]] = None
+    model_id_or_path: Union[str, Path], hf_token: Optional[str] = None, cache_dir: Optional[Union[str, Path]] = None, strict: bool = True
 ) -> PrismaticVLM:
     """Loads a pretrained PrismaticVLM from either local disk or the HuggingFace Hub."""
     if os.path.isdir(model_id_or_path):
@@ -86,7 +86,7 @@ def load(
     )
 
     # Load LLM Backbone --> note `inference_mode = True` by default when calling `load()`
-    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/] via HF Transformers")
+    overwatch.info(f"Loading Pretrained LLM [bold]{model_cfg['llm_backbone_id']}[/]")
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         model_cfg["llm_backbone_id"],
         llm_max_length=model_cfg.get("llm_max_length", 2048),
@@ -102,6 +102,7 @@ def load(
         vision_backbone,
         llm_backbone,
         arch_specifier=model_cfg["arch_specifier"],
+        strict=strict,
     )
 
     return vlm

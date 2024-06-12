@@ -5,12 +5,17 @@ Class definition for all LLMs derived from https://github.com/mlfoundations/open
 """
 from functools import partial
 from typing import Callable, List, Optional, Type
+import os
 
 import torch
 from torch import nn as nn
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
-from transformers import PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
+import yaml
+import argparse
+import fsspec
+import subprocess
+import io
 
 from prismatic.models.backbones.llm.base_llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import (
@@ -24,10 +29,11 @@ try:
     from open_lm.utils.transformers.hf_model import OpenLMforCausalLM
     from open_lm.utils.transformers.hf_config import OpenLMConfig
     from open_lm.model import create_params
+    from open_lm.main import get_latest_checkpoint, load_model
     from open_lm.params import add_model_args
     from transformers import GPTNeoXTokenizerFast
 except ImportError:
-    overwatch.info(f"open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
+    overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
 
 
 # fmt: off
@@ -36,39 +42,75 @@ OPENLM_MODELS = {
         "llm_family": "open_lm", "llm_cls": OpenLMforCausalLM, "hf_hub_path": ""
     },
 }
-# fmt: on
-
-class OpenlmArgs(object):
-    pass
 
 
 class OpenlmLLMBackbone(LLMBackbone):
+    """
+    OpenLM LLM Backbone class.
+
+    llm_backbone_id: str
+        - should contain "openlm" to indicate that this is an OpenLM model, either by being in the path or using "(openlm)" as a prefix
+        - (if not inference_mode) should be the path to a directory with the following structure:
+            [llm_backbone_id]: a directory containing the model's files
+                - params.txt: a file containing the model's parameters
+                - [checkpoints]: a directory containing model checkpoints
+                    {any_name}.pt: a model checkpoint file with .pt extension
+    inference_mode: bool = False
+        - whether to load the model in inference mode 
+        /!\ in inference mode, we don't load the base weights at initialization, they should be loaded later
+    """
     def __init__(
         self,
         llm_backbone_id: str,  # open_lm model.json
-        open_lm_args: OpenlmArgs,
-        llm_cls: OpenLMforCausalLM, #Type[PreTrainedModel],
-        hf_hub_path: str = "",  # unused
-        llm_family: str = "open_lm",
-        llm_max_length: int = 2048,
-        hf_token: Optional[str] = None,  # unused
         inference_mode: bool = False,
+        **kwargs,
         # use_flash_attention_2: bool = False,
     ) -> None:
+        if llm_backbone_id.startswith("(openlm)"):
+            llm_backbone_id = llm_backbone_id.replace("(openlm)", "")
         super().__init__(llm_backbone_id)
-        self.llm_family = llm_family
-        self.llm_max_length = llm_max_length
+        self.llm_family = "open_lm"
         self.inference_mode = inference_mode
 
-        # Initialize LLM (downloading from HF Hub if necessary) --> `llm_cls` is the actual {Model}ForCausalLM class!
-        #   => Note: We're eschewing use of the AutoModel API so that we can be more explicit about LLM-specific details
+        # Read params.txt in the model directory
+        # [Contract] `params.txt` must be in the `llm_backbone_id` directory
+
+        if llm_backbone_id.startswith("s3"):
+            while llm_backbone_id.endswith("/"):
+                llm_backbone_id = llm_backbone_id[:-1]
+            cmd = f"aws s3 cp {llm_backbone_id}/params.txt -"
+            proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = proc.communicate()
+            if proc.returncode != 0:
+                raise Exception(f"Failed to fetch model from s3. stderr: {stderr.decode()}")
+            open_lm_args = yaml.safe_load(io.BytesIO(stdout))
+        else:
+            with fsspec.open(llm_backbone_id + "/params.txt", "rb") as f:
+                open_lm_args = yaml.safe_load(f)
+
+        model_args = argparse.ArgumentParser()
+        # For retro-compatability, we need to add the model args to the parser 
+        # so that default values are set for new args that might not figure in the params.txt
+        add_model_args(model_args)
+        open_lm_args.update(model_args.parse_args([]).__dict__)
+        open_lm_args = argparse.Namespace(**open_lm_args)
+
+        self.llm_max_length = int(open_lm_args.seq_len)
+        open_lm_args.fsdp = True
+        open_lm_args.distributed = True
         self.llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
-        
-        if open_lm_args.checkpoint:
-            checkpoint = torch.load(open_lm_args.checkpoint)
-            state_dict = checkpoint["state_dict"]
-            state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
-            self.llm.model.load_state_dict(state_dict)
+
+        # Initialize LLM
+        # [Contract] `inference_mode` means we're loading from a pretrained checkpoint; no need to load base weights now.
+        if not self.inference_mode:
+            checkpoint = get_latest_checkpoint(llm_backbone_id + "/checkpoints")
+            if checkpoint is None and os.path.exists(llm_backbone_id + "/checkpoints/latest-checkpoint.pt"):
+                checkpoint = llm_backbone_id + "/checkpoints/latest-checkpoint.pt"
+            if checkpoint is None:
+                overwatch.error(f"No checkpoint found in {llm_backbone_id}/checkpoints. No weights loaded.")
+            else:
+                open_lm_args.resume = checkpoint
+                load_model(open_lm_args, self.llm.model)
 
         # Lightweight Handling (with extended explanation) for setting some LLM Parameters
         #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)
@@ -83,7 +125,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             self.llm.enable_input_require_grads()
 
         # Load Tokenizer
-        overwatch.info(f"Loading [bold]{llm_family}[/] GPTNeoXTokenizerFast", ctx_level=1)
+        overwatch.info(f"Loading [bold]{self.llm_family}[/] GPTNeoXTokenizerFast", ctx_level=1)
         self.tokenizer = GPTNeoXTokenizerFast.from_pretrained(
             "EleutherAI/gpt-neox-20b", model_max_length=self.llm_max_length
         )
@@ -98,7 +140,26 @@ class OpenlmLLMBackbone(LLMBackbone):
         # add pad token, note gptneox has vocab size of 50257, but open_lm by default has an lm_head with size 50432
         self.tokenizer.add_special_tokens({"pad_token": "<PAD>"})
         self.llm.config.pad_token_id = self.tokenizer.pad_token_id
-        self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
+        # self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
+
+    def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
+        if "state_dict" in state_dict:
+            state_dict = state_dict["state_dict"]
+        # If the model comes from an OpenLM checkpoint this should be removed
+        state_dict = {x.replace("module.", ""): y for x, y in state_dict.items()}
+        # If the model comes from a Prismatic checkpoint this should be removed
+        state_dict = {x.replace("llm.model.", ""): y for x, y in state_dict.items()}
+        # Load the state dict
+        self.llm.model.load_state_dict(state_dict, strict=strict, assign=assign)
+
+    @property
+    def embed_dim(self) -> int:
+        if hasattr(self.llm.config, "dim"):
+            return self.llm.config.dim
+        elif hasattr(self.llm.config, "d_model"):
+            return self.llm.config.d_model
+        else:
+            raise ValueError("Could not find `dim` or `d_model` in the LLM config.")
 
     def get_fsdp_wrapping_policy(self) -> Callable:
         """Return a `transformer_auto_wrap_policy` where we wrap each instance of `self.transformer_layer_cls`"""
@@ -128,13 +189,15 @@ class OpenlmLLMBackbone(LLMBackbone):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        **kwargs,
     ) -> CausalLMOutputWithPast:
+
         output: CausalLMOutputWithPast = self.llm(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,
-            inputs_embeds=inputs_embeds,
+            inputs_embeds=inputs_embeds.to(self.llm.device) if inputs_embeds is not None else None,
             labels=labels,
             use_cache=use_cache,
             output_attentions=output_attentions,

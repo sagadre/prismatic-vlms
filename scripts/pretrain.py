@@ -61,24 +61,22 @@ class PretrainConfig:
 
     # Pretraining Stage in < align (projector-only) | finetune (projector + LLM) | full-finetune (all) >
     # ---
-    stage: str = "finetune"                                         # Pretraining Stage in < align | finetune >
-    pretrained_checkpoint: Optional[Path] = None                    # Pretrained Checkpoint to Load (for `finetune`)
-                                                                    #   if None =>> will match on (run_dir / `align`)
-
+    stage: str = "finetune"                                           # Pretraining Stage in < align | finetune >
+    pretrained_checkpoint: Optional[Path] = None                      # Pretrained Checkpoint to Load (for `finetune`)
+                                                                      #   if None =>> will match on (run_dir / `align`)
+                                                                      
     # Run Arguments
-    run_id: Optional[str] = None                                    # Run ID for logging, Weights & Biases
-    run_root_dir: Path = Path("runs")                               # Path to directory to store logs & checkpoints
-    seed: int = 7                                                   # Random seed (for reproducibility)
+    run_id: Optional[str] = None                                      # Run ID for logging, Weights & Biases
+    run_root_dir: Path = Path("runs")                                 # Path to directory to store logs & checkpoints
+    seed: int = 7                                                     # Random seed (for reproducibility)
 
     # HF Hub Credentials (for any gated models)
-    hf_token: Union[str, Path] = Path(".hf_token")                  # Environment variable or Path to HF Token
+    hf_token: Union[str, Path] = "HF_TOKEN"                           # Environment variable or Path to HF Token
 
     # Tracking Parameters
-    trackers: Tuple[str, ...] = ("jsonl", "wandb")                  # Trackers to initialize (if W&B, add config!)
-    # wandb_project: str = "prismatic"                                # Name of W&B project (default: `prismatic`)
-    # wandb_entity: Optional[str] = None                              # Name of W&B entity (default: None)
-    wandb_project: str = "onyx-vlms"
-    wandb_entity: str = "stanford-voltron"
+    trackers: Tuple[str, ...] = ("jsonl", "wandb")                    # Trackers to initialize (if W&B, add config!)
+    wandb_project: str = "prismatic"                                # Name of W&B project (default: `prismatic`)
+    wandb_entity: Optional[str] = None                              # Name of W&B entity (default: None)
 
     def __post_init__(self) -> None:
         """Set optimization parameters based on `stage` in {"align", "finetune"}."""
@@ -118,7 +116,7 @@ class PretrainConfig:
 
 @draccus.wrap()
 def pretrain(cfg: PretrainConfig) -> None:
-    overwatch.info("Prismatic VLM Training :: Gathering Light")
+    overwatch.info("Prismatic VLM Training")
 
     # Note => Under `torchrun` initializing `overwatch` will automatically set up `torch.distributed`
     torch.cuda.set_device(device_id := (overwatch.rank() % torch.cuda.device_count()))
@@ -132,7 +130,6 @@ def pretrain(cfg: PretrainConfig) -> None:
         cfg.run_id = f"{dataset_id}+{model_id}+stage-{cfg.stage}+x{cfg.seed}" if cfg.run_id is None else cfg.run_id
 
     # Start =>> Build Directories and Set Randomness
-    overwatch.info('"Life is like a prism; what you see depends on how you turn the glass."', ctx_level=1)
     hf_token = cfg.hf_token.read_text().strip() if isinstance(cfg.hf_token, Path) else os.environ[cfg.hf_token]
     worker_init_fn = set_global_seed(cfg.seed, get_worker_init_fn=True)
     os.makedirs(run_dir := (cfg.run_root_dir / cfg.run_id), exist_ok=True)
@@ -151,7 +148,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     )
 
     # Load LLM Backbone --> on CPU, in Full Precision (initializing Tokenizer + handling special tokens if necessary)
-    overwatch.info(f"Loading Pretrained LLM [bold]{cfg.model.llm_backbone_id}[/] via HF Transformers")
+    overwatch.info(f"Loading Pretrained LLM [bold]{cfg.model.llm_backbone_id}[/]")
     llm_backbone, tokenizer = get_llm_backbone_and_tokenizer(
         cfg.model.llm_backbone_id, llm_max_length=cfg.model.llm_max_length, hf_token=hf_token
     )
@@ -230,7 +227,7 @@ def pretrain(cfg: PretrainConfig) -> None:
     metrics.finalize()
 
     # And... we're done!
-    overwatch.info("... and that's all, folks!")
+    overwatch.info("Training Complete =>> Exiting")
     dist.barrier()
     dist.destroy_process_group()
 

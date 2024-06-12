@@ -142,6 +142,9 @@ dmypy.json
 # Mac OS
 .DS_Store
 
-# Caches and Datasets
+# Caches, Logs and Datasets
 cache/
 data/
+llm_checkpoints/
+vlm_checkpoints/
+runs/
