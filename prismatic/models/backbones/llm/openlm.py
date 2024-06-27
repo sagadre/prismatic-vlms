@@ -211,13 +211,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         # Additionally, explicitly verify that Tokenizer padding_side is set to right for training!
         assert self.tokenizer.padding_side == "right", "Tokenizer `padding_side` is not set to `right`!"
 
-        # add pad token, note gptneox has vocab size of 50257, but open_lm by default has an lm_head with size 50432
-        # self.tokenizer.add_tokens_at_index({"pad_token": "<PAD>", "sep_token": "<TASK>", "turn_token": "<TURN>"}, [50400, 50300, 50350], special_tokens=True)
-        # self.tokenizer.add_special_tokens({"pad_token": "<PAD>", "sep_token": "<TASK>"})
-        # self.tokenizer.vocab["<PAD>"] = 50400
-        # self.tokenizer.vocab["<TASK>"] = 50300
         self.llm.config.pad_token_id = self.tokenizer.pad_token_id
-        # self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
 
     def load_state_dict(self, state_dict, strict: bool = True, assign: bool = False):
         if "state_dict" in state_dict:
