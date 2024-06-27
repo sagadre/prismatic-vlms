@@ -186,7 +186,7 @@ class OpenlmLLMBackbone(LLMBackbone):
         #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)
         #
         #      Reference: https://discuss.huggingface.co/t/what-is-the-purpose-of-use-cache-in-decoder/958
-        self.llm.config.use_cache = False if not self.inference_mode else True
+        self.llm.config.use_cache = False #if not self.inference_mode else True
 
         #   => Turns out that when gradient checkpointing is on and the underlying LLM has no "trainable" parameters
         #      (requires_grad is False), backprop will fail; setting `enable_input_requires_grad()` registers a new
@@ -272,7 +272,7 @@ class OpenlmLLMBackbone(LLMBackbone):
             past_key_values=past_key_values,
             inputs_embeds=inputs_embeds.to(self.llm.device) if inputs_embeds is not None else None,
             labels=labels,
-            use_cache=use_cache,
+            use_cache=False,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,

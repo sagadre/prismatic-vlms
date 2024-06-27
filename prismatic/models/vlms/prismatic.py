@@ -45,7 +45,7 @@ class CustomStopTokensCriteria(StoppingCriteria):
         self.stop_tokens = stop_tokens
 
     def __call__(self, generated_tokens: torch.Tensor, *args, **kwargs) -> bool:
-        return any(token in self.stop_tokens for token in generated_tokens)
+        return any(token in self.stop_tokens for token in generated_tokens.flatten())
 
 
 class PrismaticVLM(VLM):
@@ -558,6 +558,9 @@ class PrismaticVLM(VLM):
                 else:
                     raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
 
+                if "stopping_criteria" in kwargs:
+                    stop_criteria_list += kwargs.pop("stopping_criteria")
+
                 # Handle `return_string_probabilities`
                 if return_string_probabilities is None:
                     full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, stopping_criteria=stop_criteria_list, **kwargs)
@@ -609,6 +612,9 @@ class PrismaticVLM(VLM):
         end_turn_id = tokenizer.AGENT_STOP
         stop_criteria = CustomStopTokensCriteria([end_turn_id])
         stop_criteria_list = StoppingCriteriaList([stop_criteria])
+
+        if "stopping_criteria" in kwargs:
+            stop_criteria_list += kwargs.pop("stopping_criteria")
 
         # Prepare Inputs
         input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.device)
