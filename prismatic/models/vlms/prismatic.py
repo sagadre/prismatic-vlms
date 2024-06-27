@@ -20,6 +20,7 @@ import torch
 from PIL import Image
 from torch.distributed.fsdp.wrap import _module_wrap_policy, _or_policy
 from transformers.modeling_outputs import CausalLMOutputWithPast
+from transformers import StoppingCriteria, StoppingCriteriaList
 
 from prismatic.models.backbones.llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import PromptBuilder
@@ -37,6 +38,14 @@ overwatch = initialize_overwatch(__name__)
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
+
+
+class CustomStopTokensCriteria(StoppingCriteria):
+    def __init__(self, stop_tokens: List[str]) -> None:
+        self.stop_tokens = stop_tokens
+
+    def __call__(self, generated_tokens: torch.Tensor, *args, **kwargs) -> bool:
+        return any(token in self.stop_tokens for token in generated_tokens)
 
 
 class PrismaticVLM(VLM):
@@ -521,6 +530,8 @@ class PrismaticVLM(VLM):
         tokenizer = self.llm_backbone.tokenizer
         autocast_dtype = self.llm_backbone.half_precision_dtype
         end_turn_id = tokenizer.AGENT_STOP
+        stop_criteria = CustomStopTokensCriteria([end_turn_id])
+        stop_criteria_list = StoppingCriteriaList([stop_criteria])
 
         # Prepare Inputs
         batch_input_ids = [
@@ -549,7 +560,7 @@ class PrismaticVLM(VLM):
 
                 # Handle `return_string_probabilities`
                 if return_string_probabilities is None:
-                    full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, **kwargs)
+                    full_out_ids = super().generate(input_ids=input_ids, pixel_values=pixel_values, stopping_criteria=stop_criteria_list, **kwargs)
                     gen_ids = full_out_ids[0, input_ids.shape[1] :]
                     eos_idx = gen_ids.eq(tokenizer.eos_token_id).nonzero(as_tuple=True)[0]
                     turn_idx = gen_ids.eq(end_turn_id).nonzero(as_tuple=True)[0]
@@ -564,6 +575,7 @@ class PrismaticVLM(VLM):
                         pixel_values=pixel_values,
                         output_scores=True,
                         return_dict_in_generate=True,
+                        stopping_criteria=stop_criteria_list,
                         **kwargs,
                     )
                     # Generation pattern should usually be [TOKEN] <EOS> for True/False and Yes/No Generations
@@ -594,6 +606,9 @@ class PrismaticVLM(VLM):
     def generate(self, image: Image, prompt_text: str, **kwargs: str) -> str:
         # For now, only support generation with a batch size of 1 for simplicity
         image_transform, tokenizer = self.vision_backbone.image_transform, self.llm_backbone.tokenizer
+        end_turn_id = tokenizer.AGENT_STOP
+        stop_criteria = CustomStopTokensCriteria([end_turn_id])
+        stop_criteria_list = StoppingCriteriaList([stop_criteria])
 
         # Prepare Inputs
         input_ids = tokenizer(prompt_text, truncation=True, return_tensors="pt").input_ids.to(self.device)
@@ -614,6 +629,7 @@ class PrismaticVLM(VLM):
             generated_ids = super().generate(
                 input_ids=input_ids,            # Shape: [1, seq]
                 pixel_values=pixel_values,      # Shape: [1, 3, res, res] or Dict[str, Shape[1, 3, res, res]]
+                stopping_criteria=stop_criteria_list,
                 **kwargs
             )
             # fmt: on
