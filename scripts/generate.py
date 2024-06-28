@@ -34,7 +34,8 @@ DEFAULT_IMAGE_URL = (
 class GenerateConfig:
     # fmt: off
     model_path: Union[str, Path] = (                                    # Path to Pretrained VLM (on disk or HF Hub)
-        "siglip-224px+7b"
+        # "siglip-224px+7b"
+        "prism-dinosiglip-224px+7b"
     )
 
     # HF Hub Credentials (required for Gated Models like LLaMa-2)
@@ -63,6 +64,78 @@ def generate(cfg: GenerateConfig) -> None:
     image = Image.open(requests.get(DEFAULT_IMAGE_URL, stream=True).raw).convert("RGB")
     prompt_builder = vlm.get_prompt_builder()
     system_prompt = prompt_builder.system_prompt
+
+    # === DEBUG ===
+    prompt_texts = ["What is sitting in the coffee?", "caption.", "Give me a description of the scene"]
+
+    print("\n")
+    print(f"=> [INPUT] {prompt_texts[0]}")
+    print(f"=> [INPUT] {prompt_texts[1]}")
+    print(f"=> [INPUT] {prompt_texts[2]}")
+    print("\n=========\n")
+
+    prompt_builder_0 = vlm.get_prompt_builder()
+    prompt_builder_0.add_turn(role="human", message=prompt_texts[0])
+    prompt_text_0 = prompt_builder_0.get_prompt()
+
+    prompt_builder_1 = vlm.get_prompt_builder()
+    prompt_builder_1.add_turn(role="human", message=prompt_texts[1])
+    prompt_text_1 = prompt_builder_1.get_prompt()
+
+    prompt_builder_2 = vlm.get_prompt_builder()
+    prompt_builder_2.add_turn(role="human", message=prompt_texts[2])
+    prompt_text_2 = prompt_builder_2.get_prompt()
+
+    # Generate from the VLM
+    generated_text_0 = vlm.generate(
+        image,
+        prompt_text_0,
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        max_new_tokens=cfg.max_new_tokens,
+        min_length=cfg.min_length,
+    )
+
+    generated_text_1 = vlm.generate(
+        image,
+        prompt_text_1,
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        max_new_tokens=cfg.max_new_tokens,
+        min_length=cfg.min_length,
+    )
+
+    generated_text_2 = vlm.generate(
+        image,
+        prompt_text_2,
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        max_new_tokens=cfg.max_new_tokens,
+        min_length=cfg.min_length,
+    )
+
+    print(f"[OLD] Generation 0 :: {generated_text_0[0].strip()}")
+    print(f"[OLD] Generation 1 :: {generated_text_1[0].strip()}")
+    print(f"[OLD] Generation 2 :: {generated_text_2[0].strip()}")
+    print("\n---\n")
+
+    # ATTEMPT BATCH GENERATION
+    batch_generated = vlm.generate(
+        [image, image, image],
+        [prompt_text_0, prompt_text_1, prompt_text_2],
+        do_sample=cfg.do_sample,
+        temperature=cfg.temperature,
+        max_new_tokens=cfg.max_new_tokens,
+        min_length=cfg.min_length,
+    )
+
+    print(f"[NEW] Generation 0 :: {batch_generated[0].strip()}")
+    print(f"[NEW] Generation 1 :: {batch_generated[1].strip()}")
+    print(f"[NEW] Generation 2 :: {batch_generated[2].strip()}")
+
+    exit(0)
+
+    # === DEBUG ===
 
     # REPL Welcome Message
     print(

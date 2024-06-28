@@ -42,13 +42,13 @@ class LLaMa2ChatPromptBuilder(PromptBuilder):
         # === `self.prompt` gets built up over multiple turns ===
         self.prompt, self.turn_count = "", 0
 
-    def add_turn(self, role: str, message: str) -> str:
+    def add_turn(self, role: str, message: str, add_image_token: bool = True) -> str:
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
         message = message.replace("<image>", "").strip()
 
-        # Special Handling for "system" prompt (turn_count == 0)
+        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            sys_message = self.wrap_human(self.system_prompt + message)
+            sys_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(self.system_prompt + message)}"
             wrapped_message = sys_message
         elif (self.turn_count % 2) == 0:
             human_message = self.wrap_human(message)
@@ -66,18 +66,17 @@ class LLaMa2ChatPromptBuilder(PromptBuilder):
         # Return "wrapped_message" (effective string added to context)
         return wrapped_message
 
-    def get_potential_prompt(self, message: str) -> None:
+    def get_potential_prompt(self, message: str, add_image_token: bool = True) -> str:
         # Assumes that it's always the user's (human's) turn!
         prompt_copy = str(self.prompt)
 
-        # Special Handling for "system" prompt (turn_count == 0)
+        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            sys_message = self.wrap_human(self.system_prompt + message)
-            prompt_copy += sys_message
-
+            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(self.system_prompt + message)}"
         else:
             human_message = self.wrap_human(message)
-            prompt_copy += human_message
+
+        prompt_copy += human_message
 
         return prompt_copy.removeprefix(self.bos).rstrip()
 

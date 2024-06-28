@@ -40,7 +40,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         self.dataset_type = "align"
 
         # Create Prompt Template
-        self.prompt_template = "{caption}" + self.tokenizer.eos_token
+        self.prompt_template = "<image>{caption}" + self.tokenizer.eos_token
 
         # Load Chat JSON
         with open(self.chat_json, "r") as f:
@@ -134,12 +134,13 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         :return: Dictionary of {"pixel_values": torch.Tensor, "input_ids": torch.Tensor, "labels": torch.Tensor}
         """
         conversation = self.examples[idx]["conversations"]
+        has_image = "image" in self.examples[idx]
 
         # Create Prompt Builder --> add each message sequentially
         prompt_builder, input_ids, labels = self.prompt_builder_fn(model_family="prismatic"), [], []
         for turn_idx, turn in enumerate(conversation):
             # Get "effective" string added to prompt --> handle whitespace for tokenizer type!
-            msg = prompt_builder.add_turn(turn["from"], turn["value"])
+            msg = prompt_builder.add_turn(turn["from"], turn["value"], add_image_token=has_image)
 
             # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
             if isinstance(self.tokenizer, LlamaTokenizerFast):
@@ -172,7 +173,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         input_ids, labels = input_ids[: self.tokenizer.model_max_length], labels[: self.tokenizer.model_max_length]
 
         # === Handle "unimodal" (language-only) vs. "multimodal" ===
-        if "image" in self.examples[idx]:
+        if has_image:
             image_path = Path(self.examples[idx]["image"])
 
             # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
@@ -185,7 +186,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
 
         else:
             # No image --> return `pixel_values` = None; Collator will do the smart batch handling for us!
-            return dict(pixel_values=None, input_ids=input_ids, labels=labels)
+            return dict(input_ids=input_ids, labels=labels)
 
     def get_modality_lengths(self) -> List[Tuple[bool, int]]:
         """Get a list of modalities (unimodal / text-only vs. multimodal) and length of conversations per example."""

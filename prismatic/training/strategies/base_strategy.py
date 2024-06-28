@@ -184,7 +184,6 @@ class TrainingStrategy(ABC):
                             attention_mask=batch["attention_mask"],
                             pixel_values=batch["pixel_values"],
                             labels=batch["labels"],
-                            multimodal_indices=batch["multimodal_indices"],
                         )
                         loss = output.loss
 

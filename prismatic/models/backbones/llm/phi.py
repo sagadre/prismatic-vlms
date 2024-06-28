@@ -8,7 +8,7 @@ from typing import Optional, Type
 
 import torch
 from torch import nn as nn
-from transformers import PhiForCausalLM
+from transformers import AddedToken, PhiForCausalLM
 from transformers.models.phi.modeling_phi import PhiDecoderLayer
 
 from prismatic.models.backbones.llm.base_llm import HFCausalLLMBackbone
@@ -43,9 +43,11 @@ class PhiLLMBackbone(HFCausalLLMBackbone):
             **PHI_MODELS[llm_backbone_id],
         )
 
-        # [Special Case] Phi PAD Token Handling --> for clarity, we add an extra token (and resize)
+        # [Special Case] Phi PAD and <image> Token Handling --> for clarity, we add extra tokens (and resize)
         self.tokenizer.add_special_tokens({"pad_token": "<|pad|>"})
+        self.tokenizer.add_tokens(AddedToken("<image>", special=True, normalized=False), special_tokens=True)
         self.llm.config.pad_token_id = self.tokenizer.pad_token_id
+        self.llm.config.image_token_id = self.tokenizer.vocab["<image>"]
         self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
 
     @property
