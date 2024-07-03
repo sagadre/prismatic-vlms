@@ -12,7 +12,7 @@ from transformers import AddedToken, PhiForCausalLM
 from transformers.models.phi.modeling_phi import PhiDecoderLayer
 
 from prismatic.models.backbones.llm.base_llm import HFCausalLLMBackbone
-from prismatic.models.backbones.llm.prompting import PhiPromptBuilder, PromptBuilder
+# from prismatic.models.backbones.llm.prompting import PhiPromptBuilder, PromptBuilder
 
 # Registry ==> Support Phi Models (from HF Transformers)
 # fmt: off
@@ -50,12 +50,12 @@ class PhiLLMBackbone(HFCausalLLMBackbone):
         self.llm.config.image_token_id = self.tokenizer.vocab["<image>"]
         self.llm.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=64)
 
-    @property
-    def prompt_builder_fn(self) -> Type[PromptBuilder]:
-        if self.identifier.startswith("phi-2"):
-            return PhiPromptBuilder
-
-        raise ValueError(f"No PromptBuilder defined for LLM Backbone `{self.identifier}`")
+    # @property
+    # def prompt_builder_fn(self) -> Type[PromptBuilder]:
+    #     if self.identifier.startswith("phi-2"):
+    #         return PhiPromptBuilder
+    #
+    #     raise ValueError(f"No PromptBuilder defined for LLM Backbone `{self.identifier}`")
 
     @property
     def transformer_layer_cls(self) -> Type[nn.Module]:

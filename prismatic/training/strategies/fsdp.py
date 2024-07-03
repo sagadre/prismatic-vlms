@@ -10,7 +10,7 @@ import shutil
 from collections import OrderedDict
 from functools import partial
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Union
 
 import torch
 import torch.distributed as dist
@@ -30,6 +30,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim import AdamW
 from transformers.optimization import get_cosine_schedule_with_warmup
 
+from prismatic.models.hf_vlm import PrismaticForVision2Seq
 from prismatic.models.vlms import PrismaticVLM
 from prismatic.overwatch import initialize_overwatch
 from prismatic.training.strategies.base_strategy import TrainingStrategy
@@ -41,7 +42,7 @@ overwatch = initialize_overwatch(__name__)
 class FSDPStrategy(TrainingStrategy):
     def __init__(
         self,
-        vlm: PrismaticVLM,
+        vlm: Union[PrismaticVLM, PrismaticForVision2Seq],
         device_id: int,
         epochs: int,
         max_steps: Optional[int],
@@ -91,6 +92,11 @@ class FSDPStrategy(TrainingStrategy):
         self.fsdp_state_dict_type = state_dict_type
         self.fsdp_save_policy = FullStateDictConfig(offload_to_cpu=True, rank0_only=True)
 
+    def get_state_dict(self) -> Dict[str, torch.Tensor]:
+        assert isinstance(self.vlm, FSDP), "FSDPStrategy.save_checkpoint assumes VLM is already wrapped in FSDP!"
+        with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy):
+            return self.vlm.state_dict()
+
     def save_checkpoint(
         self,
         run_dir: Path,
@@ -100,36 +106,41 @@ class FSDPStrategy(TrainingStrategy):
         only_trainable: bool = True,
     ) -> None:
         """Save a checkpoint to the `run_dir` only containing the state_dicts for trainable parameters by default."""
-        assert isinstance(self.vlm, FSDP), "FSDPStrategy.save_checkpoint assumes VLM is already wrapped in FSDP!"
+        full_vlm_state_dict = self.get_state_dict()
+        model_state_dicts = {
+            mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
+        }
 
-        # Summon Full State Dictionary =>> Reconstitute from Shards
-        with FSDP.state_dict_type(self.vlm, self.fsdp_state_dict_type, self.fsdp_save_policy):
-            full_vlm_state_dict = self.vlm.state_dict()
-            model_state_dicts = {
-                mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
-            }
+        # Iterate through `full_vlm_state_dict` and split `mkey.{full_dotted_path}` -> `mkey: {full_dotted_path}`
+        for key, param in full_vlm_state_dict.items():
+            for mkey in model_state_dicts:
+                if key.startswith(mprefix := f"{mkey}."):
+                    model_state_dicts[mkey][key.removeprefix(mprefix)] = param
 
-            # Iterate through `full_vlm_state_dict` and split `mkey.{full_dotted_path}` -> `mkey: {full_dotted_path}`
-            for key, param in full_vlm_state_dict.items():
-                for mkey in model_state_dicts:
-                    if key.startswith(mprefix := f"{mkey}."):
-                        model_state_dicts[mkey][key.removeprefix(mprefix)] = param
+        # Save on rank zero *only*
+        if overwatch.is_rank_zero():
+            checkpoint_dir = run_dir / "checkpoints"
+            if train_loss is None:
+                checkpoint_path = checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss=inf.pt"
+            else:
+                checkpoint_path = checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss={train_loss:.4f}.pt"
 
-            # Save on rank zero *only*
-            if overwatch.is_rank_zero():
-                checkpoint_dir = run_dir / "checkpoints"
-                if train_loss is None:
-                    checkpoint_path = checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss=inf.pt"
-                else:
-                    checkpoint_path = (
-                        checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss={train_loss:.4f}.pt"
-                    )
-
-                # Save Checkpoint & Copy Latest to `latest-checkpoint.pt`
-                torch.save({"model": model_state_dicts}, checkpoint_path)
-                shutil.copy(checkpoint_path, checkpoint_dir / "latest-checkpoint.pt")
+            # Save Checkpoint & Copy Latest to `latest-checkpoint.pt`
+            torch.save({"model": model_state_dicts}, checkpoint_path)
+            shutil.copy(checkpoint_path, checkpoint_dir / "latest-checkpoint.pt")
 
     def run_setup(self, run_dir: Path, n_train_examples: int) -> None:
+        # Lightweight Handling (with extended explanation) for setting some LLM Parameters
+        #   => Set `decoder.use_cache = False` --> incompatible with gradient checkpointing (+ training in general)
+        #
+        #      Reference: https://discuss.huggingface.co/t/what-is-the-purpose-of-use-cache-in-decoder/958
+        self.vlm.language_model.config.use_cache = False
+
+        #   => Turns out that when gradient checkpointing is on and the underlying LLM has no "trainable" parameters
+        #      (requires_grad is False), backprop will fail; setting `enable_input_requires_grad()` registers a new
+        #      forward hook that fixes this =>> also totally safe for the "full finetuning" setting!
+        self.vlm.language_model.enable_input_require_grads()
+
         # Iteratively Assemble FSDP Wrapping Policy by fetching the wrapping policies for each backbone/constituent
         vlm_fsdp_wrapping_policy = self.vlm.get_fsdp_wrapping_policy()
 
@@ -144,7 +155,14 @@ class FSDPStrategy(TrainingStrategy):
 
             # When running FSDP with a frozen vision backbone --> move to half precision!
             overwatch.info("Casting Vision Backbone to *Half Precision* via `.to(dtype=...)`")
-            self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
+
+            # TODO (siddk) =>> Simplify
+            if isinstance(self.vlm, PrismaticVLM):
+                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
+            elif isinstance(self.vlm, PrismaticForVision2Seq):
+                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.default_dtype)
+            else:
+                raise ValueError(f"Unexpected VLM Type `{type(self.vlm)}`")
 
         else:
             # If we're not using mixed precision, everything is in default full precision!

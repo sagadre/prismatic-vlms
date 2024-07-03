@@ -16,8 +16,8 @@ from pathlib import Path
 
 import draccus
 
+from prismatic.data import convert_to_jpg, download_extract
 from prismatic.overwatch import initialize_overwatch
-from prismatic.preprocessing import convert_to_jpg, download_extract
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)

@@ -12,7 +12,7 @@ from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
 
 
 class MistralInstructPromptBuilder(PromptBuilder):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
 
         # Note =>> Mistral Tokenizer is an instance of `LlamaTokenizer(Fast)`

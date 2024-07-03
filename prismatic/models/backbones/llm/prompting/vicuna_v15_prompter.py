@@ -20,7 +20,7 @@ SYS_PROMPTS = {
 
 
 class VicunaV15ChatPromptBuilder(PromptBuilder):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
         self.system_prompt = (SYS_PROMPTS[self.model_family] if system_prompt is None else system_prompt).strip() + " "
 

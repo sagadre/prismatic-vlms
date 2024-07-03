@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple, Type
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from transformers import CodeGenTokenizerFast, LlamaTokenizerFast, PreTrainedTokenizerBase
+from transformers import LlamaTokenizerFast, PreTrainedTokenizerBase
 
 from prismatic.models.backbones.llm.prompting import PromptBuilder
 from prismatic.models.backbones.vision import ImageTransform
@@ -95,6 +95,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
             is_multimodal = "image" in example
             n_words = sum([len(turn["value"].replace("<image>", "").split()) for turn in example["conversations"]])
             modality_lengths.append((is_multimodal, (n_image_patches + n_words) if is_multimodal else n_words))
+
         return modality_lengths
 
     def __len__(self) -> int:
@@ -146,10 +147,6 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             if isinstance(self.tokenizer, LlamaTokenizerFast):
                 msg = msg.rstrip()
 
-            # Phi-2 Tokenizer == CodeGenTokenizer (Fast) -- no special handling!
-            elif isinstance(self.tokenizer, CodeGenTokenizerFast):
-                pass
-
             else:
                 raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
 
@@ -195,6 +192,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             is_multimodal = "image" in example
             n_words = sum([len(turn["value"].split()) for turn in example["conversations"]])
             modality_lengths.append((is_multimodal, n_words))
+
         return modality_lengths
 
     def __len__(self) -> int:

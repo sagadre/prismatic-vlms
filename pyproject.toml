@@ -10,7 +10,7 @@ authors = [
     {name = "Ashwin Balakrishna", email="ashwin.balakrishna@tri.global"},
 ]
 description = "Prismatic VLMs: Investigating the Design Space of Visually-Conditioned Language Models"
-version = "0.0.3"
+version = "1.0.0"
 readme = "README.md"
 requires-python = ">=3.8"
 keywords = ["vision-language models", "multimodal pretraining", "machine learning"]

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from prismatic.preprocessing.download import download_with_progress
+from prismatic.data.download import download_with_progress
 
 # === Constants ===
 DATA_URL = "https://huggingface.co/datasets/X2FD/LVIS-Instruct4V/resolve/main/lvis_instruct4v_220k.json"

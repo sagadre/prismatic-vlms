@@ -10,6 +10,8 @@ import os
 from logging import LoggerAdapter
 from typing import Any, Callable, ClassVar, Dict, MutableMapping, Tuple, Union
 
+import transformers
+
 # Overwatch Default Format String
 RICH_FORMATTER, DATEFMT = "| >> %(message)s", "%m/%d [%H:%M:%S]"
 
@@ -32,6 +34,9 @@ LOG_CONFIG = {
     "root": {"level": "INFO", "handlers": ["console"]},
 }
 logging.config.dictConfig(LOG_CONFIG)
+
+# Suppress Transformers User Warnings (let's pretend we know what we're doing)
+transformers.logging.set_verbosity_error()
 
 
 # === Custom Contextual Logging Logic ===

@@ -13,7 +13,7 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 
 from prismatic.models.backbones.llm.base_llm import HFCausalLLMBackbone
 from prismatic.models.backbones.llm.prompting import (
-    LLaMa2ChatPromptBuilder,
+    Llama2ChatPromptBuilder,
     PromptBuilder,
     PurePromptBuilder,
     VicunaV15ChatPromptBuilder,
@@ -83,7 +83,7 @@ class LLaMa2LLMBackbone(HFCausalLLMBackbone):
             return PurePromptBuilder
 
         elif self.identifier.startswith("llama2-") and self.identifier.endswith("-chat"):
-            return LLaMa2ChatPromptBuilder
+            return Llama2ChatPromptBuilder
 
         elif self.identifier.startswith("vicuna"):
             return VicunaV15ChatPromptBuilder

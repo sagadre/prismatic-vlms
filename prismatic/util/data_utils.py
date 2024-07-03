@@ -45,6 +45,7 @@ class PaddedCollatorForLanguageModeling:
         elif isinstance(pixel_values[0], torch.Tensor):
             pixel_values = torch.stack(pixel_values)
         elif isinstance(pixel_values[0], dict):
+            raise ValueError("I should never be getting here anymore?")
             pixel_values = {
                 k: torch.stack([pixel_values[idx][k] for idx in range(len(pixel_values))]) for k in pixel_values[0]
             }

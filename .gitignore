@@ -144,6 +144,5 @@ dmypy.json
 # Mac OS
 .DS_Store
 
-# Caches and Datasets
+# Caches
 cache/
-data/

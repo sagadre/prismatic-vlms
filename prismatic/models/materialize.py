@@ -20,6 +20,7 @@ from prismatic.models.backbones.vision import (
     SigLIPViTBackbone,
     VisionBackbone,
 )
+from prismatic.models.hf_config import PrismaticConfig
 from prismatic.models.vlms import PrismaticVLM
 
 # === Registries =>> Maps ID --> {cls(), kwargs} :: Different Registries for Vision Backbones, LLM Backbones, VLMs ===
@@ -128,3 +129,12 @@ def get_vlm(
         enable_mixed_precision_training=enable_mixed_precision_training,
         arch_specifier=arch_specifier,
     )
+
+
+def get_vlm_config(
+    vision_backbone_id: str,
+    llm_backbone_id: str,
+    llm_max_length: int,
+    **kwargs: str,
+) -> PrismaticConfig:
+    return PrismaticConfig(vision_backbone_id, llm_backbone_id, llm_max_length, **kwargs)

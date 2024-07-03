@@ -9,7 +9,7 @@ from typing import Optional
 
 
 class PromptBuilder(ABC):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         self.model_family = model_family
 
         # Only some models define a system prompt => let subclasses handle this logic!
@@ -26,7 +26,7 @@ class PromptBuilder(ABC):
 
 
 class PurePromptBuilder(PromptBuilder):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
 
         # TODO (siddk) =>> Can't always assume LlamaTokenizer --> FIX ME!
