@@ -27,8 +27,8 @@ S3_LOG_PATH = "s3://tri-ml-sandbox-16011-us-east-1-datasets/sagemaker/prismatic-
 LUSTRE_PARAMETERS = {
     "file_system_type": "FSxLustre",
     "file_system_access_mode": "rw",
-    "file_system_id": "fs-0ee5fb54e88f9dd00",
-    "directory_path": "/kxvmdbev",
+    "file_system_id": "fs-0f6385d4b8c204170",
+    "directory_path": "/wiwhlb4v",
 }
 
 

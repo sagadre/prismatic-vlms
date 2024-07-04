@@ -5,12 +5,11 @@ Factory class defining functions for instantiating various Training Strategies, 
 and strategy configurations.
 """
 
-from typing import Callable, Optional, Union
+from typing import Callable, Optional
 
 import torch
 
-from prismatic.models.hf_vlm import PrismaticForVision2Seq
-from prismatic.models.vlms import PrismaticVLM
+from prismatic.models import PrismaticForVision2Seq
 from prismatic.training.strategies import FSDPStrategy, TrainingStrategy
 
 # Registry =>> Maps ID --> {cls(), kwargs} :: supports FSDP for now, but DDP handler is also implemented!
@@ -22,7 +21,7 @@ TRAIN_STRATEGIES = {
 
 def get_train_strategy(
     train_strategy: str,
-    vlm: Union[PrismaticVLM, PrismaticForVision2Seq],
+    vlm: PrismaticForVision2Seq,
     device_id: int,
     epochs: int,
     max_steps: Optional[int],

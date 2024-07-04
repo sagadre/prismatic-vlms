@@ -1,5 +1,5 @@
 """
-hf_config.py
+configuration_prismatic.py
 
 Standalone classes for fully-specifying a Prismatic VLM configuration (derived from `transformers.PretrainedConfig`).
 Defines full set of "registries" for various supported vision backbones and LLM backbones.

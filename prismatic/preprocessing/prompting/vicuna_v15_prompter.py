@@ -1,26 +1,34 @@
 """
-mistral_instruct_prompter.py
+vicuna_v15_prompter.py
 
-Defines a PromptBuilder for building Mistral Instruct Chat Prompts --> recommended pattern used by HF / online tutorial.s
+Defines a PromptBuilder for building Vicuna-v1.5 Chat Prompts.
 
-Reference: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1#instruction-format
+Reference: https://huggingface.co/lmsys/vicuna-13b-v1.5
 """
 
 from typing import Optional
 
-from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
+from prismatic.preprocessing.prompting.base_prompter import PromptBuilder
+
+# Default System Prompt for LLaVa Models
+SYS_PROMPTS = {
+    "prismatic": (
+        "A chat between a curious user and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the user's questions."
+    ),
+}
 
 
-class MistralInstructPromptBuilder(PromptBuilder):
+class VicunaV15ChatPromptBuilder(PromptBuilder):
     def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
+        self.system_prompt = (SYS_PROMPTS[self.model_family] if system_prompt is None else system_prompt).strip() + " "
 
-        # Note =>> Mistral Tokenizer is an instance of `LlamaTokenizer(Fast)`
-        #      =>> Mistral Instruct *does not* use a System Prompt
+        # LLaMa-2 Specific
         self.bos, self.eos = "<s>", "</s>"
 
         # Get role-specific "wrap" functions
-        self.wrap_human = lambda msg: f"[INST] {msg} [/INST] "
+        self.wrap_human = lambda msg: f"USER: {msg} ASSISTANT: "
         self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===
@@ -30,10 +38,10 @@ class MistralInstructPromptBuilder(PromptBuilder):
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
         message = message.replace("<image>", "").strip()
 
-        # Special Handling for <image> token insertion (turn_count == 0)
+        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
-            wrapped_message = human_message
+            sys_message = f"{'<image>' if add_image_token else ''}{self.system_prompt + self.wrap_human(message)}"
+            wrapped_message = sys_message
         elif (self.turn_count % 2) == 0:
             human_message = self.wrap_human(message)
             wrapped_message = human_message
@@ -54,9 +62,9 @@ class MistralInstructPromptBuilder(PromptBuilder):
         # Assumes that it's always the user's (human's) turn!
         prompt_copy = str(self.prompt)
 
-        # Special Handling for <image> token insertion (turn_count == 0)
+        # Special Handling for "system" prompt (turn_count == 0)
         if self.turn_count == 0:
-            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
+            human_message = f"{'<image>' if add_image_token else ''}{self.system_prompt + self.wrap_human(message)}"
         else:
             human_message = self.wrap_human(message)
 
@@ -65,5 +73,5 @@ class MistralInstructPromptBuilder(PromptBuilder):
         return prompt_copy.removeprefix(self.bos).rstrip()
 
     def get_prompt(self) -> str:
-        # Remove prefix <bos> because it gets auto-inserted by tokenizer!
+        # Remove prefix <bos> (if exists) because it gets auto-inserted by tokenizer!
         return self.prompt.removeprefix(self.bos).rstrip()

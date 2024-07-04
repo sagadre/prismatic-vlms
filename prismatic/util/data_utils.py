@@ -5,7 +5,7 @@ General utilities and classes for facilitating data loading and collation.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Sequence, Tuple
+from typing import Dict, Sequence
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -18,12 +18,7 @@ IGNORE_INDEX = -100
 class PaddedCollatorForLanguageModeling:
     model_max_length: int
     pad_token_id: int
-    default_image_resolution: Tuple[int, int, int]
     padding_side: str = "right"
-    pixel_values_dtype: torch.dtype = torch.float32
-
-    def __post_init__(self) -> None:
-        self.dummy_pixel_values = torch.zeros(self.default_image_resolution, dtype=self.pixel_values_dtype)
 
     def __call__(self, instances: Sequence[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
         input_ids, labels = tuple([instance[key] for instance in instances] for key in ("input_ids", "labels"))
@@ -44,17 +39,7 @@ class PaddedCollatorForLanguageModeling:
             pixel_values = None
         elif isinstance(pixel_values[0], torch.Tensor):
             pixel_values = torch.stack(pixel_values)
-        elif isinstance(pixel_values[0], dict):
-            raise ValueError("I should never be getting here anymore?")
-            pixel_values = {
-                k: torch.stack([pixel_values[idx][k] for idx in range(len(pixel_values))]) for k in pixel_values[0]
-            }
         else:
             raise ValueError(f"Unsupported `pixel_values` type = {type(pixel_values)}")
 
-        return dict(
-            pixel_values=pixel_values,
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-        )
+        return dict(pixel_values=pixel_values, input_ids=input_ids, attention_mask=attention_mask, labels=labels)

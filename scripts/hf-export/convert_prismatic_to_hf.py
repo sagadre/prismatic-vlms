@@ -74,22 +74,13 @@ def remap_state_dicts(
 class HFConvertConfig:
     # fmt: off
     prismatic_model_path_or_id: Union[str, Path] = (                    # Path to "deprecated-format" VLM (disk/HF Hub)
-        # "siglip-224px+7b"
-        # "prism-dinosiglip-224px+7b"
-
-        "prism-dinosiglip-224px-controlled+7b"
+        "prism-dinosiglip-224px+7b"
     )
     output_hf_model_local_path: Path = Path(                            # Local Path to save HF Model
-        # "/mnt/fsx/x-prismatic-vlms/hf-convert/siglip-224px-7b"
-        # "/mnt/fsx/x-prismatic-vlms/hf-convert/prism-dinosiglip-224px-7b"
-
-        "/mnt/fsx/x-prismatic-vlms/hf-convert/prism-dinosiglip-224px-controlled-7b"
+        "/mnt/fsx/x-prismatic-vlms/hf-convert/prism-dinosiglip-224px-7b"
     )
     output_hf_model_hub_path: str = (                                   # Path to HF Hub Path for "internal" HF model
-        # "TRI-ML/siglip-224px-7b"                                        #   =>> huggingface.co/TRI-ML/{...}
-        # "TRI-ML/prism-dinosiglip-224px-7b"
-
-        "TRI-ML/prism-dinosiglip-224px-controlled-7b"
+        "TRI-ML/prism-dinosiglip-224px-7b"                              #   =>> huggingface.co/TRI-ML/{...}
     )
 
     # Registry of (Deprecated) Models w/ Configurations (for low-budget Model Cards)

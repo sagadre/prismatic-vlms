@@ -37,16 +37,17 @@ RUN pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url h
 # Install Prismatic Python Dependencies (`pip`) + Sagemaker
 RUN pip install \
     accelerate>=0.25.0 \
-    draccus@git+https://github.com/dlwh/draccus \
+    draccus==0.8.0 \
     einops \
-    huggingface_hub \
+    huggingface_hub==0.22.2 \
     jsonlines \
     matplotlib \
-    pyyaml-include==1.4.1 \
+    protobuf \
     rich \
-    sentencepiece \
-    timm>=0.9.10 \
-    transformers>=4.38.1 \
+    sentencepiece==0.1.99 \
+    timm==0.9.10 \
+    tokenizers==0.19.1 \
+    transformers==4.40.1 \
     wandb \
     sagemaker-training
 

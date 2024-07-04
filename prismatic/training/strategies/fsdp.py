@@ -10,7 +10,7 @@ import shutil
 from collections import OrderedDict
 from functools import partial
 from pathlib import Path
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -30,8 +30,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.optim import AdamW
 from transformers.optimization import get_cosine_schedule_with_warmup
 
-from prismatic.models.hf_vlm import PrismaticForVision2Seq
-from prismatic.models.vlms import PrismaticVLM
+from prismatic.models import PrismaticForVision2Seq
 from prismatic.overwatch import initialize_overwatch
 from prismatic.training.strategies.base_strategy import TrainingStrategy
 
@@ -42,7 +41,7 @@ overwatch = initialize_overwatch(__name__)
 class FSDPStrategy(TrainingStrategy):
     def __init__(
         self,
-        vlm: Union[PrismaticVLM, PrismaticForVision2Seq],
+        vlm: PrismaticForVision2Seq,
         device_id: int,
         epochs: int,
         max_steps: Optional[int],
@@ -155,14 +154,7 @@ class FSDPStrategy(TrainingStrategy):
 
             # When running FSDP with a frozen vision backbone --> move to half precision!
             overwatch.info("Casting Vision Backbone to *Half Precision* via `.to(dtype=...)`")
-
-            # TODO (siddk) =>> Simplify
-            if isinstance(self.vlm, PrismaticVLM):
-                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.half_precision_dtype)
-            elif isinstance(self.vlm, PrismaticForVision2Seq):
-                self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.default_dtype)
-            else:
-                raise ValueError(f"Unexpected VLM Type `{type(self.vlm)}`")
+            self.vlm.vision_backbone.to(dtype=self.vlm.vision_backbone.default_dtype)
 
         else:
             # If we're not using mixed precision, everything is in default full precision!

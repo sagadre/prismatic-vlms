@@ -1,7 +1,7 @@
 """
 vlm.py
 
-Core Prismatic VLM model definitions (derived from `transformers.PreTrainedModel`) providing a compositional interface
+Prismatic VLM model definitions (derived from `transformers.PreTrainedModel`) providing a compositional interface
 for defining different VLM instances (e.g., combinations of vision backbones, LLMs, architectures). Unlike v1 of the
 Prismatic codebase, these classes are designed to implement the respective HuggingFace Transformers APIs, with full
 compatibility with the rest of the HF ecosystem (e.g., Generation Utilities, PEFT finetuning, etc.).
@@ -24,8 +24,8 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
 
-from prismatic.models.backbones.hf_vision import PrismaticVisionBackbone
-from prismatic.models.hf_config import PrismaticConfig
+from prismatic.models.backbones import PrismaticVisionBackbone
+from prismatic.models.configuration import PrismaticConfig
 from prismatic.overwatch import initialize_overwatch
 
 # Initialize Overwatch =>> Wraps `logging.Logger`

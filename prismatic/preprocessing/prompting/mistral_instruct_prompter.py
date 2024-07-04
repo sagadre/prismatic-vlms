@@ -1,38 +1,22 @@
 """
-llama2_prompter.py
+mistral_instruct_prompter.py
 
-Defines a PromptBuilder for building LLaMa-2 Chat Prompts --> not sure if this is "optimal", but this is the pattern
-that's used by HF and other online tutorials.
+Defines a PromptBuilder for building Mistral Instruct Chat Prompts --> recommended pattern used by HF / online tutorial.s
 
-Reference: https://huggingface.co/blog/llama2#how-to-prompt-llama-2
+Reference: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1#instruction-format
 """
 
 from typing import Optional
 
-from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
-
-# Default System Prompt for Prismatic Models
-SYS_PROMPTS = {
-    "prismatic": (
-        "You are a helpful language and vision assistant. "
-        "You are able to understand the visual content that the user provides, "
-        "and assist the user with a variety of tasks using natural language."
-    ),
-}
+from prismatic.preprocessing.prompting.base_prompter import PromptBuilder
 
 
-def format_system_prompt(system_prompt: str) -> str:
-    return f"<<SYS>\n{system_prompt.strip()}\n<</SYS>>\n\n"
-
-
-class Llama2ChatPromptBuilder(PromptBuilder):
+class MistralInstructPromptBuilder(PromptBuilder):
     def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
-        self.system_prompt = format_system_prompt(
-            SYS_PROMPTS[self.model_family] if system_prompt is None else system_prompt
-        )
 
-        # LLaMa-2 Specific
+        # Note =>> Mistral Tokenizer is an instance of `LlamaTokenizer(Fast)`
+        #      =>> Mistral Instruct *does not* use a System Prompt
         self.bos, self.eos = "<s>", "</s>"
 
         # Get role-specific "wrap" functions
@@ -46,10 +30,10 @@ class Llama2ChatPromptBuilder(PromptBuilder):
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
         message = message.replace("<image>", "").strip()
 
-        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
+        # Special Handling for <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            sys_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(self.system_prompt + message)}"
-            wrapped_message = sys_message
+            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
+            wrapped_message = human_message
         elif (self.turn_count % 2) == 0:
             human_message = self.wrap_human(message)
             wrapped_message = human_message
@@ -70,9 +54,9 @@ class Llama2ChatPromptBuilder(PromptBuilder):
         # Assumes that it's always the user's (human's) turn!
         prompt_copy = str(self.prompt)
 
-        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
+        # Special Handling for <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(self.system_prompt + message)}"
+            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
         else:
             human_message = self.wrap_human(message)
 

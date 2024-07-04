@@ -1,5 +1,5 @@
 """
-hf_vision.py
+vision_backbone.py
 
 PyTorch nn.Module definition for a Vision Backbone (Visual Featurizer), with native support for (fused) TIMM
 `VisionTransformer` pretrained models.
@@ -103,7 +103,8 @@ class PrismaticVisionBackbone(nn.Module):
         for module in self.modules():
             module._is_hf_initialized = True
 
-    def get_fsdp_wrapping_policy(self) -> Callable:
+    @staticmethod
+    def get_fsdp_wrapping_policy() -> Callable:
         """Return a simple FSDP policy that wraps the _entire_ featurizer."""
         vit_wrap_policy = partial(_module_wrap_policy, module_classes={VisionTransformer})
         transformer_block_policy = partial(transformer_auto_wrap_policy, transformer_layer_cls={Block})

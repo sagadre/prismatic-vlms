@@ -12,15 +12,14 @@ random access image reading is relatively cheap/fast.
 import copy
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Type
+from typing import Callable, Dict, List, Tuple, Type
 
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from transformers import LlamaTokenizerFast, PreTrainedTokenizerBase
 
-from prismatic.models.backbones.llm.prompting import PromptBuilder
-from prismatic.models.backbones.vision import ImageTransform
+from prismatic.preprocessing.prompting import PromptBuilder
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -31,7 +30,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         self,
         chat_json: Path,
         image_dir: Path,
-        image_transform: ImageTransform,
+        image_transform: Callable[[Image.Image], torch.Tensor],
         tokenizer: PreTrainedTokenizerBase,
     ) -> None:
         super().__init__()
@@ -107,7 +106,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         self,
         instruct_json: Path,
         image_dir: Path,
-        image_transform: ImageTransform,
+        image_transform: Callable[[Image.Image], torch.Tensor],
         tokenizer: PreTrainedTokenizerBase,
         prompt_builder_fn: Type[PromptBuilder],
     ) -> None:

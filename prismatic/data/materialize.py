@@ -5,15 +5,16 @@ Factory class for initializing pretraining datasets on a per-VLM basis; provides
 clear control flow.
 """
 
-from typing import Tuple, Type
+from typing import Callable, Tuple, Type
 
+import torch
+from PIL import Image
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizerBase
 
 from prismatic.conf import DatasetConfig
 from prismatic.data.datasets import AlignDataset, FinetuneDataset
-from prismatic.models.backbones.llm.prompting import PromptBuilder
-from prismatic.models.backbones.vision import ImageTransform
+from prismatic.preprocessing.prompting import PromptBuilder
 from prismatic.util.data_utils import PaddedCollatorForLanguageModeling
 
 # Dataset Initializers =>> Maps Stage --> cls()
@@ -23,16 +24,15 @@ DATASET_INITIALIZER = {"align": AlignDataset, "finetune": FinetuneDataset, "full
 def get_dataset_and_collator(
     stage: str,
     dataset_cfg: DatasetConfig,
-    image_transform: ImageTransform,
+    image_transform: Callable[[Image.Image], torch.Tensor],
     tokenizer: PreTrainedTokenizerBase,
     prompt_builder_fn: Type[PromptBuilder],
-    default_image_resolution: Tuple[int, int, int],
     padding_side: str = "right",
 ) -> Tuple[Dataset, PaddedCollatorForLanguageModeling]:
     dataset_cls = DATASET_INITIALIZER[stage]
     dataset_root_dir = dataset_cfg.dataset_root_dir
     collator = PaddedCollatorForLanguageModeling(
-        tokenizer.model_max_length, tokenizer.pad_token_id, default_image_resolution, padding_side=padding_side
+        tokenizer.model_max_length, tokenizer.pad_token_id, padding_side=padding_side
     )
 
     # Switch on `stage`

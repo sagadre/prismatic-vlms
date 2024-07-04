@@ -10,14 +10,14 @@ from typing import Any, Dict, List, Type
 from timm.data import resolve_data_config
 from transformers import AddedToken, AutoTokenizer
 
-from prismatic.models.backbones.llm.prompting import (
+from prismatic.preprocessing.processors import PrismaticImageProcessor, PrismaticProcessor
+from prismatic.preprocessing.prompting import (
     Llama2ChatPromptBuilder,
     MistralInstructPromptBuilder,
     PromptBuilder,
     PurePromptBuilder,
     VicunaV15ChatPromptBuilder,
 )
-from prismatic.preprocessing.hf_processor import PrismaticImageProcessor, PrismaticProcessor
 
 
 def get_prompt_builder_fn(llm_backbone_id: str) -> Type[PromptBuilder]:
