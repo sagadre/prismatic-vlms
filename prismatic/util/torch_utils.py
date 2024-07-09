@@ -77,7 +77,7 @@ def worker_init_function(worker_id: int) -> None:
 # === BFloat16 Support ===
 
 
-def check_bloat16_supported() -> bool:
+def check_bfloat16_supported() -> bool:
     try:
         import packaging.version
         import torch.cuda.nccl as nccl

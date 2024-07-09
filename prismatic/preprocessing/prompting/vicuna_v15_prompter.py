@@ -1,54 +1,46 @@
 """
-llama2_prompter.py
+vicuna_v15_prompter.py
 
-Defines a PromptBuilder for building LLaMa-2 Chat Prompts --> not sure if this is "optimal", but this is the pattern
-that's used by HF and other online tutorials.
+Defines a PromptBuilder for building Vicuna-v1.5 Chat Prompts.
 
-Reference: https://huggingface.co/blog/llama2#how-to-prompt-llama-2
+Reference: https://huggingface.co/lmsys/vicuna-13b-v1.5
 """
 
 from typing import Optional
 
-from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
+from prismatic.preprocessing.prompting.base_prompter import PromptBuilder
 
-# Default System Prompt for Prismatic Models
+# Default System Prompt for LLaVa Models
 SYS_PROMPTS = {
     "prismatic": (
-        "You are a helpful language and vision assistant. "
-        "You are able to understand the visual content that the user provides, "
-        "and assist the user with a variety of tasks using natural language."
+        "A chat between a curious user and an artificial intelligence assistant. "
+        "The assistant gives helpful, detailed, and polite answers to the user's questions."
     ),
 }
 
 
-def format_system_prompt(system_prompt: str) -> str:
-    return f"<<SYS>\n{system_prompt.strip()}\n<</SYS>>\n\n"
-
-
-class LLaMa2ChatPromptBuilder(PromptBuilder):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+class VicunaV15ChatPromptBuilder(PromptBuilder):
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
-        self.system_prompt = format_system_prompt(
-            SYS_PROMPTS[self.model_family] if system_prompt is None else system_prompt
-        )
+        self.system_prompt = (SYS_PROMPTS[self.model_family] if system_prompt is None else system_prompt).strip() + " "
 
         # LLaMa-2 Specific
         self.bos, self.eos = "<s>", "</s>"
 
         # Get role-specific "wrap" functions
-        self.wrap_human = lambda msg: f"[INST] {msg} [/INST] "
+        self.wrap_human = lambda msg: f"USER: {msg} ASSISTANT: "
         self.wrap_gpt = lambda msg: f"{msg if msg != '' else ' '}{self.eos}"
 
         # === `self.prompt` gets built up over multiple turns ===
         self.prompt, self.turn_count = "", 0
 
-    def add_turn(self, role: str, message: str) -> str:
+    def add_turn(self, role: str, message: str, add_image_token: bool = True) -> str:
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
         message = message.replace("<image>", "").strip()
 
-        # Special Handling for "system" prompt (turn_count == 0)
+        # Special Handling for "system" prompt and <image> token insertion (turn_count == 0)
         if self.turn_count == 0:
-            sys_message = self.wrap_human(self.system_prompt + message)
+            sys_message = f"{'<image>' if add_image_token else ''}{self.system_prompt + self.wrap_human(message)}"
             wrapped_message = sys_message
         elif (self.turn_count % 2) == 0:
             human_message = self.wrap_human(message)
@@ -66,21 +58,20 @@ class LLaMa2ChatPromptBuilder(PromptBuilder):
         # Return "wrapped_message" (effective string added to context)
         return wrapped_message
 
-    def get_potential_prompt(self, message: str) -> None:
+    def get_potential_prompt(self, message: str, add_image_token: bool = True) -> str:
         # Assumes that it's always the user's (human's) turn!
         prompt_copy = str(self.prompt)
 
         # Special Handling for "system" prompt (turn_count == 0)
         if self.turn_count == 0:
-            sys_message = self.wrap_human(self.system_prompt + message)
-            prompt_copy += sys_message
-
+            human_message = f"{'<image>' if add_image_token else ''}{self.system_prompt + self.wrap_human(message)}"
         else:
             human_message = self.wrap_human(message)
-            prompt_copy += human_message
+
+        prompt_copy += human_message
 
         return prompt_copy.removeprefix(self.bos).rstrip()
 
     def get_prompt(self) -> str:
-        # Remove prefix <bos> because it gets auto-inserted by tokenizer!
+        # Remove prefix <bos> (if exists) because it gets auto-inserted by tokenizer!
         return self.prompt.removeprefix(self.bos).rstrip()

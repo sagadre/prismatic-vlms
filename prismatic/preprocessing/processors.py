@@ -1,22 +1,22 @@
 """
-processing_prismatic.py
+processors.py
 
-HuggingFace-style preprocessor definitions for Prismatic VLMs, inheriting from `ProcessorMixin`. Default configuration
-specifies `siglip-224px+7b`.
+`PrismaticProcessor` definitions (implements `transformers.processing_utils.ProcessorMixin`) that wraps both an
+underlying Image Processor (`transformers.image_processing_utils.ImageProcessingMixin`) and Tokenizer.
+
+Note :: The `transformers.ImageProcessingMixin` needs to be JSON serializable; as such, we *cannot* specify transforms
+as instances of `torchvision.transforms.Compose` (or the object-oriented Transform classes in general).
 """
 
 from typing import Any, ClassVar, List, Optional, Tuple, Union
 
-import timm.data
+import timm
 import torch
 import torchvision.transforms.functional as TVF
 from PIL import Image
 from torchvision.transforms import CenterCrop, Compose, Normalize, Resize, ToTensor
-from transformers import PreTrainedTokenizerBase
-from transformers.image_processing_utils import BatchFeature, ImageProcessingMixin
-from transformers.processing_utils import ProcessorMixin
+from transformers import BatchFeature, ImageProcessingMixin, PreTrainedTokenizerBase, ProcessorMixin, TensorType
 from transformers.tokenization_utils import PaddingStrategy, PreTokenizedInput, TextInput, TruncationStrategy
-from transformers.utils import TensorType
 
 
 # === Image Processing ===
@@ -121,7 +121,7 @@ class PrismaticImageProcessor(ImageProcessingMixin):
             elif self.image_resize_strategy == "resize-crop":
                 pass
             else:
-                raise ValueError(f"Image resize strategy `{self.image_resize_strategy}` is not supported!")
+                raise ValueError(f"Image Resize Strategy `{self.image_resize_strategy}` is not supported!")
 
         # Dispatch **kwargs to super()
         super().__init__(**kwargs)
@@ -173,8 +173,9 @@ class PrismaticImageProcessor(ImageProcessingMixin):
         return self.preprocess(images, **kwargs)
 
 
-# === PrismaticProcessor =>> Wraps both ImageProcessor and Tokenizer ===
-#   =>> https://github.com/huggingface/transformers/blob/main/src/transformers/models/llava/processing_llava.py
+# === Core `PrismaticProcessor` Definition =>> Wraps both an ImageProcessor and Tokenizer ===
+#   =>> Ref: https://github.com/huggingface/transformers/blob/main/src/transformers/models/llava/processing_llava.py
+#   =>> Note: The naming `image_processor` and `tokenizer` are again *special* and EXPLICITLY handled by `transformers`
 class PrismaticProcessor(ProcessorMixin):
     attributes: ClassVar[List[str]] = ["image_processor", "tokenizer"]
     image_processor_class: str = "AutoImageProcessor"
@@ -182,9 +183,9 @@ class PrismaticProcessor(ProcessorMixin):
 
     def __init__(
         self,
-        image_processor: Optional[ImageProcessingMixin] = None,
+        image_processor: Optional[PrismaticImageProcessor] = None,
         tokenizer: Optional[PreTrainedTokenizerBase] = None,
-    ) -> None:
+    ):
         super().__init__(image_processor, tokenizer)
 
     def __call__(

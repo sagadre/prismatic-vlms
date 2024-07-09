@@ -91,8 +91,8 @@ class WeightsBiasesTracker:
         if overwatch.is_rank_zero():
             wandb.finish()
 
-        # A job gets 210 seconds to get its affairs in order
-        time.sleep(210)
+        # A job gets 7 seconds to get its affairs in order
+        time.sleep(7)
 
 
 # === Core Metrics Container :: Initializes Trackers => Compiles/Pushes Metrics ===

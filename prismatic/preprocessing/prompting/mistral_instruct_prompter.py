@@ -8,11 +8,11 @@ Reference: https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.1#instruction
 
 from typing import Optional
 
-from prismatic.models.backbones.llm.prompting.base_prompter import PromptBuilder
+from prismatic.preprocessing.prompting.base_prompter import PromptBuilder
 
 
 class MistralInstructPromptBuilder(PromptBuilder):
-    def __init__(self, model_family: str, system_prompt: Optional[str] = None) -> None:
+    def __init__(self, model_family: str = "prismatic", system_prompt: Optional[str] = None) -> None:
         super().__init__(model_family, system_prompt)
 
         # Note =>> Mistral Tokenizer is an instance of `LlamaTokenizer(Fast)`
@@ -26,11 +26,15 @@ class MistralInstructPromptBuilder(PromptBuilder):
         # === `self.prompt` gets built up over multiple turns ===
         self.prompt, self.turn_count = "", 0
 
-    def add_turn(self, role: str, message: str) -> str:
+    def add_turn(self, role: str, message: str, add_image_token: bool = True) -> str:
         assert (role == "human") if (self.turn_count % 2 == 0) else (role == "gpt")
         message = message.replace("<image>", "").strip()
 
-        if (self.turn_count % 2) == 0:
+        # Special Handling for <image> token insertion (turn_count == 0)
+        if self.turn_count == 0:
+            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
+            wrapped_message = human_message
+        elif (self.turn_count % 2) == 0:
             human_message = self.wrap_human(message)
             wrapped_message = human_message
         else:
@@ -46,11 +50,16 @@ class MistralInstructPromptBuilder(PromptBuilder):
         # Return "wrapped_message" (effective string added to context)
         return wrapped_message
 
-    def get_potential_prompt(self, message: str) -> None:
+    def get_potential_prompt(self, message: str, add_image_token: bool = True) -> str:
         # Assumes that it's always the user's (human's) turn!
         prompt_copy = str(self.prompt)
 
-        human_message = self.wrap_human(message)
+        # Special Handling for <image> token insertion (turn_count == 0)
+        if self.turn_count == 0:
+            human_message = f"{'<image>' if add_image_token else ''}{self.wrap_human(message)}"
+        else:
+            human_message = self.wrap_human(message)
+
         prompt_copy += human_message
 
         return prompt_copy.removeprefix(self.bos).rstrip()

@@ -12,15 +12,14 @@ random access image reading is relatively cheap/fast.
 import copy
 import json
 from pathlib import Path
-from typing import Dict, List, Tuple, Type
+from typing import Callable, Dict, List, Tuple, Type
 
 import torch
 from PIL import Image
 from torch.utils.data import Dataset
-from transformers import CodeGenTokenizerFast, LlamaTokenizerFast, PreTrainedTokenizerBase
+from transformers import LlamaTokenizerFast, PreTrainedTokenizerBase
 
-from prismatic.models.backbones.llm.prompting import PromptBuilder
-from prismatic.models.backbones.vision import ImageTransform
+from prismatic.preprocessing.prompting import PromptBuilder
 
 # HuggingFace Default / LLaMa-2 IGNORE_INDEX (for labels)
 IGNORE_INDEX = -100
@@ -31,7 +30,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         self,
         chat_json: Path,
         image_dir: Path,
-        image_transform: ImageTransform,
+        image_transform: Callable[[Image.Image], torch.Tensor],
         tokenizer: PreTrainedTokenizerBase,
     ) -> None:
         super().__init__()
@@ -40,7 +39,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         self.dataset_type = "align"
 
         # Create Prompt Template
-        self.prompt_template = "{caption}" + self.tokenizer.eos_token
+        self.prompt_template = "<image>{caption}" + self.tokenizer.eos_token
 
         # Load Chat JSON
         with open(self.chat_json, "r") as f:
@@ -95,6 +94,7 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
             is_multimodal = "image" in example
             n_words = sum([len(turn["value"].replace("<image>", "").split()) for turn in example["conversations"]])
             modality_lengths.append((is_multimodal, (n_image_patches + n_words) if is_multimodal else n_words))
+
         return modality_lengths
 
     def __len__(self) -> int:
@@ -106,7 +106,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         self,
         instruct_json: Path,
         image_dir: Path,
-        image_transform: ImageTransform,
+        image_transform: Callable[[Image.Image], torch.Tensor],
         tokenizer: PreTrainedTokenizerBase,
         prompt_builder_fn: Type[PromptBuilder],
     ) -> None:
@@ -134,20 +134,17 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         :return: Dictionary of {"pixel_values": torch.Tensor, "input_ids": torch.Tensor, "labels": torch.Tensor}
         """
         conversation = self.examples[idx]["conversations"]
+        has_image = "image" in self.examples[idx]
 
         # Create Prompt Builder --> add each message sequentially
         prompt_builder, input_ids, labels = self.prompt_builder_fn(model_family="prismatic"), [], []
         for turn_idx, turn in enumerate(conversation):
             # Get "effective" string added to prompt --> handle whitespace for tokenizer type!
-            msg = prompt_builder.add_turn(turn["from"], turn["value"])
+            msg = prompt_builder.add_turn(turn["from"], turn["value"], add_image_token=has_image)
 
             # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
             if isinstance(self.tokenizer, LlamaTokenizerFast):
                 msg = msg.rstrip()
-
-            # Phi-2 Tokenizer == CodeGenTokenizer (Fast) -- no special handling!
-            elif isinstance(self.tokenizer, CodeGenTokenizerFast):
-                pass
 
             else:
                 raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
@@ -172,7 +169,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         input_ids, labels = input_ids[: self.tokenizer.model_max_length], labels[: self.tokenizer.model_max_length]
 
         # === Handle "unimodal" (language-only) vs. "multimodal" ===
-        if "image" in self.examples[idx]:
+        if has_image:
             image_path = Path(self.examples[idx]["image"])
 
             # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
@@ -185,7 +182,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
 
         else:
             # No image --> return `pixel_values` = None; Collator will do the smart batch handling for us!
-            return dict(pixel_values=None, input_ids=input_ids, labels=labels)
+            return dict(input_ids=input_ids, labels=labels)
 
     def get_modality_lengths(self) -> List[Tuple[bool, int]]:
         """Get a list of modalities (unimodal / text-only vs. multimodal) and length of conversations per example."""
@@ -194,6 +191,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             is_multimodal = "image" in example
             n_words = sum([len(turn["value"].split()) for turn in example["conversations"]])
             modality_lengths.append((is_multimodal, n_words))
+
         return modality_lengths
 
     def __len__(self) -> int:

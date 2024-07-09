@@ -9,7 +9,7 @@ from typing import Callable, Optional
 
 import torch
 
-from prismatic.models.vlms import PrismaticVLM
+from prismatic.models import PrismaticForVision2Seq
 from prismatic.training.strategies import FSDPStrategy, TrainingStrategy
 
 # Registry =>> Maps ID --> {cls(), kwargs} :: supports FSDP for now, but DDP handler is also implemented!
@@ -21,7 +21,7 @@ TRAIN_STRATEGIES = {
 
 def get_train_strategy(
     train_strategy: str,
-    vlm: PrismaticVLM,
+    vlm: PrismaticForVision2Seq,
     device_id: int,
     epochs: int,
     max_steps: Optional[int],

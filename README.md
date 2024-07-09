@@ -6,8 +6,6 @@ To facilitate a clean workflow with open-source/public code, this internal repos
 
 - **[Default]** `vlm-core` - Treat this as the `main` branch for developing new VLM-related changes; always PR to this
   branch in lieu of `main`.
-- `vla-core` - This is the central branch for developing on vision-language-action models; this is synced with external
-  collaborators. If working on the OpenVLA project, always PR to this branch!
 - `main` - Treat this as a **locked branch**; it tracks the latest stable code in the open-source repository.
 
 **Important:** Assume that all commits/features developed for `vlm-core` will be eventually merged into the upstream
@@ -114,18 +112,23 @@ import requests
 import torch
 
 from PIL import Image
-from pathlib import Path
 
-from prismatic import load
+from prismatic import PrismaticForVision2Seq, PrismaticProcessor
+from prismatic.preprocessing import get_prompt_builder_fn
 
 # For gated LMs like Llama-2, make sure to request official access, and generate an access token
-hf_token = Path(".hf_token").read_text().strip()
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 # Load a pretrained VLM (either local path, or ID to auto-download from the HF Hub)
-model_id = "prism-dinosiglip+7b"
-vlm = load(model_id, hf_token=hf_token)
-vlm.to(device, dtype=torch.bfloat16)
+model_path = "TRI-ML/prism-dinosiglip-7b"
+processor = PrismaticProcessor.from_pretrained(model_path)
+vlm = PrismaticForVision2Seq.from_pretrained(
+    model_path,
+    attn_implementation="flash_attention_2",
+    device_map=device,
+    torch_dtype=torch.bfloat16,
+    low_cpu_mem_usage=True,
+).to(device)
 
 # Download an image and specify a prompt
 image_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/beignets-task-guide.png"
@@ -133,14 +136,14 @@ image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
 user_prompt = "What is going on in this image?"
 
 # Build prompt
-prompt_builder = vlm.get_prompt_builder()
-prompt_builder.add_turn(role="human", message=user_prompt)
+prompt_builder = get_prompt_builder_fn(vlm.config.llm_backbone_id)()
+prompt_builder.add_turn(role="human", message=user_prompt, add_image_token=True)
 prompt_text = prompt_builder.get_prompt()
 
 # Generate!
+inputs = processor(prompt_text, image).to(device, torch.bfloat16)
 generated_text = vlm.generate(
-    image,
-    prompt_text,
+    **inputs,
     do_sample=True,
     temperature=0.4,
     max_new_tokens=512,
@@ -153,32 +156,10 @@ For a complete terminal-based CLI for interacting with our VLMs, check out [scri
 ## Pretrained Models
 
 We release **all 49** VLMs trained as part of our work, with a range of different visual representations, language
-models, data, and scale. The exhaustive set of models (with structured descriptions) can be found in
-[`prismatic/models/registry.py](prismatic/models/registry.py) - we will continue to update this registry as we train
-additional models.
+models, data, and scale. The exhaustive set of models (with structured descriptions) can be found at
+[huggingface.co/TRI-ML](https://huggingface.co/collections/TRI-ML/prismatic-vlms-66857a7c64b6a6b6fbc84ea4) -- we will
+continue to update this collection as we train new models.
 
-We also provide a top-level API for instantiating models from the names mentioned in the various Figures of our paper,
-as well as for generally browsing our pretrained models by description:
-
-```python
-from prismatic import available_model_names, available_models, get_model_description
-from pprint import pprint
-
-# List all Pretrained VLMs (by HF Hub IDs)
-pprint(available_models())
-
-# List all Pretrained VLMs + Descriptions (by explicit labels / names from paper figures)
-pprint(available_model_names())
-
-# Print and return a targeted description of a model (by name or ID)
-#   =>> See `prismatic/models/registry.py` for explicit schema
-description = get_model_description("Prism-DINOSigLIP 13B (Controlled)")
-```
-
-Currently, our best performing models are the `Prism-DINOSigLIP` series, with especially strong performance on spatial
-understanding and localization tasks.
-
----
 **Explicit Notes on Model Licensing & Commercial Use**: While all code in this repository is released under an MIT
 License, our pretrained models inherit restrictions from the _datasets_ and _underlying LMs_ we use for training.
 
@@ -188,10 +169,7 @@ additionally train on the LLaVa Instruct Tuning data, which is synthetically gen
 (subject to the [OpenAI Terms of Use](https://openai.com/policies/terms-of-use)).
 
 **[5/21/24]** We release two `mistral-*-v0.1*` models derived from
-[Mistral v0.1](https://mistral.ai/news/announcing-mistral-7b/) which is subject to an Apache 2.0 License. We also 
-release `phi-2+3b` derived from 
-[Phi-2](https://www.microsoft.com/en-us/research/blog/phi-2-the-surprising-power-of-small-language-models/) released
-under an MIT License.
+[Mistral v0.1](https://mistral.ai/news/announcing-mistral-7b/) which is subject to an Apache 2.0 License.
 
 As we train new models, we will update this section of the README (and the LICENSE files associated with each model)
 appropriately. If there are any questions, please file an Issue!

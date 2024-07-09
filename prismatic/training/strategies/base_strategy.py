@@ -10,7 +10,7 @@ heavy lifting.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 import torch
 import torch.distributed as dist
@@ -18,10 +18,10 @@ from torch.utils.data import DataLoader, Dataset, DistributedSampler
 from tqdm import tqdm
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
-from prismatic.models.vlms import PrismaticVLM
+from prismatic.models import PrismaticForVision2Seq
 from prismatic.overwatch import initialize_overwatch
 from prismatic.training.metrics import Metrics
-from prismatic.util import check_bloat16_supported
+from prismatic.util import check_bfloat16_supported
 from prismatic.util.batching_utils import SplitModalitySampler
 from prismatic.util.data_utils import PaddedCollatorForLanguageModeling
 
@@ -33,7 +33,7 @@ overwatch = initialize_overwatch(__name__)
 class TrainingStrategy(ABC):
     def __init__(
         self,
-        vlm: PrismaticVLM,
+        vlm: PrismaticForVision2Seq,
         device_id: int,
         epochs: int,
         max_steps: Optional[int],
@@ -55,7 +55,7 @@ class TrainingStrategy(ABC):
 
         # Get relevant VLM instance parameters before they get (potentially) wrapped
         self.all_module_keys, self.trainable_module_keys = self.vlm.all_module_keys, self.vlm.trainable_module_keys
-        self.llm_transformer_layer_cls = self.vlm.llm_backbone.transformer_layer_cls
+        self.llm_transformer_layer_cls = self.vlm.llm_transformer_layer_cls
 
         # Optimization Parameters
         self.epochs, self.max_steps = epochs, max_steps
@@ -79,11 +79,14 @@ class TrainingStrategy(ABC):
         # Lightweight Validation
         assert (
             self.global_batch_size % self.per_device_batch_size == 0
-        ), "Per-device batch size must evenly divide global batch size!"
+        ), "Device batch size must evenly divide global batch size!"
         self.grad_accumulation_steps = self.global_batch_size // self.per_device_batch_size // overwatch.world_size()
         if self.enable_mixed_precision_training:
             assert self.mixed_precision_dtype == torch.bfloat16, "Only BF16 mixed precision training is supported!"
-            assert check_bloat16_supported(), "BFloat16 is not supported on this hardware; unset `mixed_precision`"
+            assert check_bfloat16_supported(), "BFloat16 is not supported on this hardware; unset `mixed_precision`"
+
+    @abstractmethod
+    def get_state_dict(self) -> Dict[str, torch.Tensor]: ...
 
     @abstractmethod
     def save_checkpoint(
@@ -184,7 +187,6 @@ class TrainingStrategy(ABC):
                             attention_mask=batch["attention_mask"],
                             pixel_values=batch["pixel_values"],
                             labels=batch["labels"],
-                            multimodal_indices=batch["multimodal_indices"],
                         )
                         loss = output.loss
 

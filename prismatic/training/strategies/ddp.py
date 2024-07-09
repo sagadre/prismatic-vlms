@@ -6,8 +6,9 @@ GPU hardware and LLM backbones >= 5-7B parameters, DDP training will OOM, which 
 """
 
 import shutil
+from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -22,6 +23,10 @@ overwatch = initialize_overwatch(__name__)
 
 
 class DDPStrategy(TrainingStrategy):
+    def get_state_dict(self) -> Dict[str, torch.Tensor]:
+        assert isinstance(self.vlm, DDP), "save_checkpoint assumes VLM is already wrapped in DDP!"
+        return self.vlm.module.state_dict()
+
     @overwatch.rank_zero_only
     def save_checkpoint(
         self,
@@ -32,14 +37,16 @@ class DDPStrategy(TrainingStrategy):
         only_trainable: bool = True,
     ) -> None:
         """Save a checkpoint to the `run_dir` only containing the state_dicts for trainable parameters by default."""
-        assert isinstance(self.vlm, DDP), "save_checkpoint assumes VLM is already wrapped in DDP!"
-
-        # Splinter State Dictionary by Top-Level Submodules (or subset, if `only_trainable`)
+        full_vlm_state_dict = self.get_state_dict()
         model_state_dicts = {
-            mkey: getattr(self.vlm.module, mkey).state_dict()
-            for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
+            mkey: OrderedDict() for mkey in (self.trainable_module_keys if only_trainable else self.all_module_keys)
         }
-        optimizer_state_dict = self.optimizer.state_dict()
+
+        # Iterate through `full_vlm_state_dict` and split `mkey.{full_dotted_path}` -> `mkey: {full_dotted_path}`
+        for key, param in full_vlm_state_dict.items():
+            for mkey in model_state_dicts:
+                if key.startswith(mprefix := f"{mkey}."):
+                    model_state_dicts[mkey][key.removeprefix(mprefix)] = param
 
         # Set Checkpoint Path =>> Embed *minimal* training statistics!
         checkpoint_dir = run_dir / "checkpoints"
@@ -49,7 +56,7 @@ class DDPStrategy(TrainingStrategy):
             checkpoint_path = checkpoint_dir / f"step-{global_step:06d}-epoch-{epoch:02d}-loss={train_loss:.4f}.pt"
 
         # Save Checkpoint & Copy Latest to `latest-checkpoint.pt`
-        torch.save({"model": model_state_dicts, "optimizer": optimizer_state_dict}, checkpoint_path)
+        torch.save({"model": model_state_dicts}, checkpoint_path)
         shutil.copy(checkpoint_path, checkpoint_dir / "latest-checkpoint.pt")
 
     def run_setup(self, run_dir: Path, n_train_examples: int) -> None:
@@ -66,10 +73,10 @@ class DDPStrategy(TrainingStrategy):
             # Additional Reference (to better understand gradient checkpointing in PyTorch writ large)
             #   => github.com/prigoyal/pytorch_memonger/blob/master/tutorial/Checkpointing_for_PyTorch_models.ipynb
             overwatch.info("Enabling Gradient Checkpointing on LLM Backbone", ctx_level=1)
-            self.vlm.llm_backbone.gradient_checkpointing_enable()
+            self.vlm.language_model.gradient_checkpointing_enable()
 
         # Move to Device =>> Note parameters are in full precision (*mixed precision* will only autocast as appropriate)
-        overwatch.info("Placing Entire VLM (Vision Backbone, LLM Backbone, Projector Weights) on GPU", ctx_level=1)
+        overwatch.info("Placing Entire VLM (Vision Backbone, Language Model, Projector Weights) on GPU", ctx_level=1)
         self.vlm.to(self.device_id)
 
         # Wrap with Distributed Data Parallel
