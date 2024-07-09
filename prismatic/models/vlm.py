@@ -236,7 +236,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
 
         elif stage == "full-finetune":
             self.vision_backbone.default_dtype = torch.float32
-            self.vision_backbone.requires_grad_(False)
+            self.vision_backbone.requires_grad_(True)
             self.language_model.requires_grad_(True)
             self.projector.requires_grad_(True)
 
@@ -325,7 +325,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, CausalLMOutputWithPast]:
-        """Run a forward pass through the VLM, returning a PrismaticCausalLMOutputWithPast instance (contains loss)."""
+        """Run a forward pass through the VLM, returning a CausalLMOutputWithPast instance (contains loss)."""
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
