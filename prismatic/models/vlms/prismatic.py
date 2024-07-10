@@ -610,7 +610,7 @@ class PrismaticVLM(VLM):
         # For now, only support generation with a batch size of 1 for simplicity
         image_transform, tokenizer = self.vision_backbone.image_transform, self.llm_backbone.tokenizer
         end_turn_id = tokenizer.AGENT_STOP
-        stop_criteria = CustomStopTokensCriteria([end_turn_id])
+        stop_criteria = CustomStopTokensCriteria([end_turn_id, tokenizer.eos_token_id])
         stop_criteria_list = StoppingCriteriaList([stop_criteria])
 
         if "stopping_criteria" in kwargs:

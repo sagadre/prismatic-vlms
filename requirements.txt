@@ -8,6 +8,6 @@ torch>=2.1.0
 torchvision>=0.16.0
 torchaudio
 transformers>=4.39.3
-wandb
+wandb>=0.17.1
 ninja
 git+https://github.com/jmercat/open_lm_.git@mamba_update

@@ -20,6 +20,7 @@ import argparse
 import fsspec
 import subprocess
 import io
+from time import sleep
 
 from prismatic.models.backbones.llm.base_llm import LLMBackbone
 from prismatic.models.backbones.llm.prompting import (
@@ -128,9 +129,14 @@ class OpenlmLLMBackbone(LLMBackbone):
             with fsspec.open(llm_backbone_id + "/params.txt", "rb") as f:
                 open_lm_args.update(yaml.safe_load(f))
 
+        ### TODO: This is a hack to avoid having to point to an exact existing model json file but it will be hard to maintain
+
+        model_name = open_lm_args["model"].split("/")[-1].replace(".json", "")
+        if "mbm" in llm_backbone_id:  # Expect mbm rep
+            open_lm_args["model"] = f"../mbm/mbm/open_lm_configs/{open_lm_args['model']}.json"
+
         open_lm_args = argparse.Namespace(**open_lm_args)
 
-        ### TODO: This is a hack to avoid having to point to an exact existing model json file but it will be hard to maintain
         model_json = {}
         additional_keys = ["attn_name", "attn_activation", "attn_seq_scalar", "attn_seq_scalar_alpha", ]
         temp_params = create_params(open_lm_args)
@@ -159,15 +165,20 @@ class OpenlmLLMBackbone(LLMBackbone):
             model_json["pad_vocab_size_multiple"] = temp_params.pad_vocab_size_multiple
             model_json["weight_tying"] = temp_params.weight_tying
 
-        model_name = open_lm_args.model
-        with open(f"{llm_backbone_id}/{model_name}.json", "w") as f:
+        if llm_backbone_id.startswith("s3"):
+            local_dir = "/tmp"
+        else:
+            local_dir = llm_backbone_id
+        with fsspec.open(f"{local_dir}/{model_name}.json", "w") as f:
             json.dump(model_json, f)
-        open_lm_args.model = f"{llm_backbone_id}/{model_name}.json"
+        open_lm_args.model = f"{local_dir}/{model_name}.json"
+        sleep(5) # Sleep to allow the file to be written to disk
         ### end of hack
 
         self.llm_max_length = int(open_lm_args.seq_len)
         open_lm_args.fsdp = True
         open_lm_args.distributed = True
+        open_lm_args.torchcompile = False
         self.llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
 
         # Initialize LLM
@@ -298,10 +309,15 @@ def get_vlm_state_dict(llm_backbone_id: str) -> dict:
     assert llm_backbone_id.startswith("(openvlm)"), "This function is only for OpenLM models"
 
     # Special Handling for OpenLM Backbones because it contains vision + language components
+    if llm_backbone_id.endswith("/"):
+        llm_backbone_id = llm_backbone_id[:-1]
     pretrained_checkpoint = llm_backbone_id[9:] + "/checkpoints/"
     pretrained_checkpoint = get_latest_checkpoint(pretrained_checkpoint)
     overwatch.info(f"Loading from Provided OpenLM Checkpoint {pretrained_checkpoint}", ctx_level=1)
     full_state_dict = pt_load(pretrained_checkpoint, "cpu")["state_dict"]
+    
+    # When the model is compiled at training time, it adds this prefix to the model keys, remove it to load the model correctly
+    full_state_dict = {k.replace("_orig_mod.", ""): v for k, v in full_state_dict.items()}
     return full_state_dict
 
 

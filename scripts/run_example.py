@@ -47,7 +47,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 # model_id = "runs/dinosiglip_openlm_1b+stage-finetune+x7"
 # model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
 # model_id = "runs/200_steps_dinosiglip_openlm_1b+stage-finetune+x7"
-model_id = "(openvlm)llm_checkpoints/openvlm_1b/"
+model_id = "(openvlm)llm_checkpoints/mbm/shutterstock_photo_caption_rw_original-0p3_0p7-1b-fused-warm=5000-lr=0p003-wd=0p033-cd=3e-05-bs=256-mult=1p0-seed=124-replacement=1"
 
 vlm = load(model_id, cache_dir="vlm_checkpoints")
 vlm.to(device, dtype=torch.bfloat16)
@@ -87,6 +87,7 @@ generated_text = vlm.generate(
     min_length=1,
 )
 plt.imshow(image)
+plt.savefig("output.png")
 plt.show()
 print("Prompt:", user_prompt)
 print("Generated Text:", generated_text)
