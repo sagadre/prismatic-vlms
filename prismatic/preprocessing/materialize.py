@@ -17,7 +17,9 @@ from prismatic.preprocessing.prompting import (
     PromptBuilder,
     PurePromptBuilder,
     VicunaV15ChatPromptBuilder,
+    OpenlmPromptBuilder
 )
+from prismatic.models.backbones.llm.openlm import CustomTokenizer
 
 
 def get_prompt_builder_fn(llm_backbone_id: str) -> Type[PromptBuilder]:
@@ -32,6 +34,9 @@ def get_prompt_builder_fn(llm_backbone_id: str) -> Type[PromptBuilder]:
 
     elif llm_backbone_id.startswith("mistral-") and llm_backbone_id.endswith("-instruct"):
         return MistralInstructPromptBuilder
+    
+    elif llm_backbone_id.startswith("(openlm)") or llm_backbone_id.startswith("(openvlm)"):
+        return OpenlmPromptBuilder
 
     raise ValueError(f"No PromptBuilder defined for LLM Backbone `{llm_backbone_id}`")
 
@@ -70,8 +75,13 @@ def get_prismatic_processor(
 
     # Tokenizer =>> by default, perform the necessary resizing/token addition!
     #   =>> Note that we assume Tokenizer with `padding_side="right"` during *training*; left pad during INFERENCE!
-    tokenizer = AutoTokenizer.from_pretrained(llm_hf_hub_path, model_max_length=llm_max_length, padding_side="right")
-    tokenizer.add_special_tokens({"pad_token": "<PAD>"})
-    tokenizer.add_tokens(AddedToken("<image>", special=True, normalized=False), special_tokens=True)
+    if "openlm" in llm_hf_hub_path or "openvlm" in llm_hf_hub_path:
+        tokenizer = CustomTokenizer.from_pretrained(
+            "EleutherAI/gpt-neox-20b", model_max_length=llm_max_length
+        )
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(llm_hf_hub_path, model_max_length=llm_max_length, padding_side="right")
+        tokenizer.add_special_tokens({"pad_token": "<PAD>"})
+        tokenizer.add_tokens(AddedToken("<image>", special=True, normalized=False), special_tokens=True)
 
     return PrismaticProcessor(image_processor, tokenizer)

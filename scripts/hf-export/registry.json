@@ -161,7 +161,9 @@
             "train_epochs": 1
         }
     },
-    "siglip-224px+7b": {"complete": true},
+    "siglip-224px+7b": {
+        "complete": true
+    },
     "clip-336px-resize-crop+7b": {
         "model_id": "clip-336px-resize-crop+7b",
         "names": [
@@ -509,22 +511,92 @@
             "train_epochs": 1
         }
     },
-    "prism-clip-controlled+7b": {"complete": true},
-    "prism-clip-controlled+13b": {"complete": true},
-    "prism-clip+7b": {"complete":  true},
-    "prism-clip+13b": {"complete": true},
-    "prism-siglip-controlled+7b": {"complete": true},
-    "prism-siglip-controlled+13b": {"complete": true},
-    "prism-siglip+7b": {"complete": true},
-    "prism-siglip+13b": {"complete": true},
-    "prism-dinosiglip-controlled+7b": {"complete": true},
-    "prism-dinosiglip-controlled+13b": {"complete":  true},
-    "prism-dinosiglip+7b": {"complete": true},
-    "prism-dinosiglip+13b": {"complete": true},
-    "prism-dinosiglip-224px-controlled+7b": {"complete": true},
-    "prism-dinosiglip-224px+7b": {"complete": true},
-    "llama2-chat+7b": {"complete": true},
-    "llama2-chat+13b": {"complete": true},
-    "mistral-v0.1+7b": {"complete": true},
-    "mistral-instruct-v0.1+7b": {"complete": true}
+    "openlm": {
+        "model_id": "openlm",
+        "names": [
+            "OpenLM"
+        ],
+        "description": {
+            "name": "OpenLM",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "DINOv2 ViT-L/14 + SigLIP ViT-L/14 @ 384px",
+            "image_processing": "Letterbox",
+            "language_model": "openlm",
+            "datasets": [
+                "LLaVa v1.5 Instruct"
+            ],
+            "train_epochs": 1
+        }
+    },
+    "openvlm": {
+        "model_id": "openvlm",
+        "names": [
+            "OpenVLM"
+        ],
+        "description": {
+            "name": "OpenVLM",
+            "optimization_procedure": "single-stage",
+            "visual_representation": "DINOv2 ViT-L/14 + SigLIP ViT-L/14 @ 384px",
+            "image_processing": "Letterbox",
+            "language_model": "openvlm",
+            "datasets": [
+                "LLaVa v1.5 Instruct"
+            ],
+            "train_epochs": 1
+        }
+    },
+    "prism-clip-controlled+7b": {
+        "complete": true
+    },
+    "prism-clip-controlled+13b": {
+        "complete": true
+    },
+    "prism-clip+7b": {
+        "complete": true
+    },
+    "prism-clip+13b": {
+        "complete": true
+    },
+    "prism-siglip-controlled+7b": {
+        "complete": true
+    },
+    "prism-siglip-controlled+13b": {
+        "complete": true
+    },
+    "prism-siglip+7b": {
+        "complete": true
+    },
+    "prism-siglip+13b": {
+        "complete": true
+    },
+    "prism-dinosiglip-controlled+7b": {
+        "complete": true
+    },
+    "prism-dinosiglip-controlled+13b": {
+        "complete": true
+    },
+    "prism-dinosiglip+7b": {
+        "complete": true
+    },
+    "prism-dinosiglip+13b": {
+        "complete": true
+    },
+    "prism-dinosiglip-224px-controlled+7b": {
+        "complete": true
+    },
+    "prism-dinosiglip-224px+7b": {
+        "complete": true
+    },
+    "llama2-chat+7b": {
+        "complete": true
+    },
+    "llama2-chat+13b": {
+        "complete": true
+    },
+    "mistral-v0.1+7b": {
+        "complete": true
+    },
+    "mistral-instruct-v0.1+7b": {
+        "complete": true
+    }
 }

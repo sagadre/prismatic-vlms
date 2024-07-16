@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 from transformers import CONFIG_MAPPING, AutoConfig, PretrainedConfig
 
 from prismatic.overwatch import initialize_overwatch
+import yaml
+import argparse
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -115,7 +117,14 @@ HF_LLM_BACKBONES = {
     },
     "mistral-v0.1-7b-instruct": {
         "llm_family": "mistral", "hf_meta": "mistral", "hf_hub_path": "mistralai/Mistral-7B-Instruct-v0.1"
-    }
+    },
+    # === OpenLM Backbones ===
+    "openlm": {
+        "llm_family": "openlm", "hf_meta": "openlm", "hf_hub_path": ""
+    },
+    "openvlm": {
+        "llm_family": "openvlm", "hf_meta": "openvlm", "hf_hub_path": ""
+    },
 }
 
 # fmt: on
@@ -138,28 +147,47 @@ class PrismaticConfig(PretrainedConfig):
     ) -> None:
         if vision_backbone_id not in HF_VISION_BACKBONES:
             raise ValueError(f"Vision backbone `{vision_backbone_id} not in `{HF_VISION_BACKBONES.keys()}`")
-
-        if llm_backbone_id not in HF_LLM_BACKBONES:
-            raise ValueError(f"LLM backbone `{llm_backbone_id}` not in {HF_LLM_BACKBONES.keys()}")
-
-        # Set Prismatic Configuration Fields
-        self.vision_backbone_id = vision_backbone_id
-        self.llm_backbone_id = llm_backbone_id
-        self.llm_max_length = llm_max_length
-        self.pad_to_multiple_of = pad_to_multiple_of
-
+        
         # Derive Vision Backbone Parameters
         self.use_fused_vision_backbone = HF_VISION_BACKBONES[vision_backbone_id]["use_fused_vision_backbone"]
         self.timm_model_ids = HF_VISION_BACKBONES[vision_backbone_id]["timm_model_ids"]
         self.timm_override_act_layers = HF_VISION_BACKBONES[vision_backbone_id]["timm_override_act_layers"]
         self.image_sizes = HF_VISION_BACKBONES[vision_backbone_id]["image_sizes"]
+        self.llm_max_length = llm_max_length
+        self.pad_to_multiple_of = pad_to_multiple_of
+        
+        if llm_backbone_id.startswith("(openlm)"):
+            source = llm_backbone_id.replace("(openlm)", "")
+            overwatch.info(f"OpenLM detected; loading OpenLM configuration from {source}")
+            HF_LLM_BACKBONES["openlm"]["hf_hub_path"] = source
+            self.llm_family = "openlm"
+            self.llm_backbone_id = llm_backbone_id
+            self.llm_hf_hub_path = source
+        elif llm_backbone_id.startswith("(openvlm)"):
+            source = llm_backbone_id.replace("(openvlm)", "")
+            overwatch.info(f"OpenVLM detected; loading OpenVLM configuration from {source}")
+            HF_LLM_BACKBONES["openlm"]["hf_hub_path"] = source
+            self.llm_family = "openvlm"
+            self.llm_backbone_id = llm_backbone_id
+            self.llm_hf_hub_path = source
+        elif llm_backbone_id not in HF_LLM_BACKBONES:
+            raise ValueError(f"LLM backbone `{llm_backbone_id}` not in {HF_LLM_BACKBONES.keys()}")
+        else:
+            # Set Prismatic Configuration Fields
+            self.vision_backbone_id = vision_backbone_id
+            self.llm_backbone_id = llm_backbone_id
 
-        # Derive LLM Backbone Parameters
-        #   =>> [IMPORTANT] HF Utilities actually look for a `text_config` field... we need to use that naming!
-        self.llm_family = HF_LLM_BACKBONES[llm_backbone_id]["llm_family"]
-        self.llm_hf_hub_path = HF_LLM_BACKBONES[llm_backbone_id]["hf_hub_path"]
+            # Derive LLM Backbone Parameters
+            #   =>> [IMPORTANT] HF Utilities actually look for a `text_config` field... we need to use that naming!
+            self.llm_family = HF_LLM_BACKBONES[llm_backbone_id]["llm_family"]
+            self.llm_hf_hub_path = HF_LLM_BACKBONES[llm_backbone_id]["hf_hub_path"]
+
         if text_config is None:
-            self.text_config = AutoConfig.from_pretrained(self.llm_hf_hub_path)
+            if self.llm_family in ["openlm", "openvlm"]:
+                self.text_config = yaml.load(open(f"{self.llm_hf_hub_path}/params.txt", "r"), Loader=yaml.FullLoader)
+                self.text_config = argparse.Namespace(**self.text_config)
+            else:
+                self.text_config = AutoConfig.from_pretrained(self.llm_hf_hub_path)
         else:
             self.text_config = CONFIG_MAPPING[HF_LLM_BACKBONES[llm_backbone_id]["hf_meta"]](**text_config)
 

@@ -45,6 +45,8 @@ class ModelConfig(ChoiceRegistry):
     align_max_grad_norm: float                              # Max Grad Norm (for global gradient clipping)
     align_lr_scheduler_type: str                            # LR Scheduler (default: "linear-warmup+cosine-decay")
     align_warmup_ratio: float                               # Fraction of total steps to warmup
+    align_beta1: float                                      # AdamW Beta1 (default: 0.9)
+    align_beta2: float                                      # AdamW Beta2 (default: 0.999)
 
     align_train_strategy: str                               # Align Train Strategy (default: "fsdp-shard-grad-op")
 
@@ -60,6 +62,8 @@ class ModelConfig(ChoiceRegistry):
     finetune_max_grad_norm: float                           # Max Grad Norm (for global gradient clipping)
     finetune_lr_scheduler_type: str                         # LR Scheduler (default: "linear-warmup+cosine-decay")
     finetune_warmup_ratio: float                            # Fraction of total steps to warmup
+    finetune_beta1: float                                   # AdamW Beta1 (default: 0.9)
+    finetune_beta2: float                                   # AdamW Beta2 (default: 0.999)
 
     finetune_train_strategy: str                            # Finetune Train Strategy (default: "fsdp-full-shard")
 
@@ -69,6 +73,7 @@ class ModelConfig(ChoiceRegistry):
     # Enable Traditional Mixed Precision Training via Torch Native AMP (`autocast`)
     enable_mixed_precision_training: bool = True            # Whether to enable mixed precision training
     reduce_in_full_precision: bool = False                  # Whether to run gradient reduction in FP32
+    llm_checkpoint_path: Optional[str] = None               # Path to checkpoint to load (e.g., for open_lm models)
 
     # fmt: on
 
@@ -96,6 +101,8 @@ class LLaVa_v15_Reproduction_7B(ModelConfig):
     align_max_grad_norm: float = 1.0
     align_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     align_warmup_ratio: float = 0.03
+    align_beta1: float = 0.9
+    align_beta2: float = 0.999
 
     align_train_strategy: str = "fsdp-shard-grad-op"
 
@@ -108,6 +115,8 @@ class LLaVa_v15_Reproduction_7B(ModelConfig):
     finetune_learning_rate: float = 2e-5
     finetune_weight_decay: float = 0.1
     finetune_max_grad_norm: float = 1.0
+    finetune_beta1: float = 0.9
+    finetune_beta2: float = 0.999
     finetune_lr_scheduler_type: str = "linear-warmup+cosine-decay"
     finetune_warmup_ratio: float = 0.03
 
@@ -490,6 +499,50 @@ class Prism_7B_DINOSigLIP_224px(Exp_7B_One_Stage):
     arch_specifier: str = "no-align+fused-gelu-mlp"
     finetune_epochs: int = 2
 
+# Use OpenLM as a Base LLM Backbone
+@dataclass
+class Openlm_LLaVa(ModelConfig):
+    model_id: str = "openlm"
+    arch_specifier: str = "no-align+fused-gelu-mlp"
+
+    vision_backbone_id: str = "dinosiglip-vit-so-384px"
+    llm_backbone_id: str = "openlm"
+
+    image_resize_strategy: str = "letterbox"
+    llm_max_length: int = 2048
+
+    # Align Stage Optimization Parameters
+    align_epochs: int = 1
+    align_max_steps: Optional[int] = None
+    align_global_batch_size: int = 256
+    align_per_device_batch_size: int = 16
+
+    align_learning_rate: float = 1e-3
+    align_weight_decay: float = 0.0
+    align_max_grad_norm: float = 1.0
+    align_lr_scheduler_type: str = "linear-warmup+cosine-decay"
+    align_warmup_ratio: float = 0.03
+    align_beta1: float = 0.9
+    align_beta2: float = 0.95
+
+    align_train_strategy: str = "fsdp-shard-grad-op"
+
+    # Finetune Stage Optimization Parameters
+    finetune_epochs: int = 1
+    finetune_max_steps: Optional[int] = None
+    finetune_global_batch_size: int = 128
+    finetune_per_device_batch_size: int = 16
+
+    finetune_learning_rate: float = 2e-5
+    finetune_weight_decay: float = 0.1
+    finetune_max_grad_norm: float = 1.0
+    finetune_lr_scheduler_type: str = "linear-warmup+cosine-decay"
+    finetune_warmup_ratio: float = 0.03
+    finetune_beta1: float = 0.9
+    finetune_beta2: float = 0.95
+
+    finetune_train_strategy: str = "fsdp-full-shard"
+
 
 # === Define a Model Registry Enum for Reference & Validation ===
 @unique
@@ -566,7 +619,9 @@ class ModelRegistry(Enum):
     OPT_DINOSIGLIP_224PX_RESIZE_NAIVE = Opt_7B_DINOSigLIP_ViT_SO_p14_224px_Resize_Naive
     PRISM_DINOSIGLIP_224PX_CONTROLLED_7B = Prism_7B_DINOSigLIP_224px_Controlled
     PRISM_DINOSIGLIP_224PX_7B = Prism_7B_DINOSigLIP_224px
-
+    
+    # === OpenLM as a Base LLM Backbone ===
+    OPENLM_LLAVA = Openlm_LLaVa
     @property
     def model_id(self) -> str:
         return self.value.model_id

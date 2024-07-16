@@ -45,6 +45,10 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         with open(self.chat_json, "r") as f:
             self.examples = json.load(f)
 
+        self.bos_exists = (
+            self.tokenizer("Testing 123", add_special_tokens=True).input_ids[0] == self.tokenizer.bos_token_id
+        )
+
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
         Following the *actual* code executed from the LLaVa codebase, during the "align" phase, we actually discard
@@ -80,7 +84,8 @@ class AlignDataset(Dataset[Dict[str, torch.Tensor]]):
         labels = copy.deepcopy(input_ids)
 
         # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
-        labels[0] = IGNORE_INDEX
+        if self.bos_exists:
+            labels[0] = IGNORE_INDEX
 
         # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
         pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))
@@ -120,6 +125,12 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
         with open(self.instruct_json, "r") as f:
             self.examples = json.load(f)
 
+        # some tokenizers use bos tokens, in which case we want the image embedding after the first bos token
+        self.bos_exists = (
+            self.tokenizer("Testing 123", add_special_tokens=True).input_ids[0] == self.tokenizer.bos_token_id
+        ) and (self.tokenizer("Testing 123", add_special_tokens=False).input_ids[0] != self.tokenizer.bos_token_id)
+
+
     # === Unimodal + Multimodal Handling ===
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
@@ -142,12 +153,7 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             # Get "effective" string added to prompt --> handle whitespace for tokenizer type!
             msg = prompt_builder.add_turn(turn["from"], turn["value"], add_image_token=has_image)
 
-            # Llama Tokenizer (Fast) adds extra character if a string ends in whitespace --> strip if non-empty!
-            if isinstance(self.tokenizer, LlamaTokenizerFast):
-                msg = msg.rstrip()
-
-            else:
-                raise ValueError(f"Tokenizer of type `{type(self.tokenizer)}` is not explicitly handled!")
+            msg = msg.rstrip()
 
             # Tokenize Input IDs
             turn_input_ids = self.tokenizer(msg, add_special_tokens=turn_idx == 0).input_ids
@@ -173,7 +179,8 @@ class FinetuneDataset(Dataset[Dict[str, torch.Tensor]]):
             image_path = Path(self.examples[idx]["image"])
 
             # Set the <BOS> token's label to IGNORE_INDEX (since we're inserting the image patches right after)
-            labels[0] = IGNORE_INDEX
+            if self.bos_exists:
+                labels[0] = IGNORE_INDEX
 
             # Process Image --> get "pixel_values" (will either be a torch.Tensor OR a Dict[str,torch.Tensor])
             pixel_values = self.image_transform(Image.open(self.image_dir / image_path).convert("RGB"))

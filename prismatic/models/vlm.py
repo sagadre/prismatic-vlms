@@ -25,11 +25,25 @@ from transformers.models.llama.modeling_llama import LlamaDecoderLayer
 from transformers.models.mistral.modeling_mistral import MistralDecoderLayer
 
 from prismatic.models.backbones import PrismaticVisionBackbone
+from prismatic.models.backbones import get_openlm_for_causal_lm, get_projector_state_dict, get_vision_state_dict
 from prismatic.models.configuration import PrismaticConfig
 from prismatic.overwatch import initialize_overwatch
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
+
+try:
+    from open_lm.model import Block
+    from open_lm.utils.transformers.hf_model import OpenLMforCausalLM
+    from open_lm.utils.transformers.hf_config import OpenLMConfig
+    from open_lm.model import create_params
+    from open_lm.main import get_latest_checkpoint, load_model
+    from open_lm.file_utils import pt_load
+    from open_lm.params import add_model_args
+    from transformers import GPTNeoXTokenizerFast
+except ImportError:
+    overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
+
 
 
 # PyTorch / HuggingFace Default IGNORE_INDEX (for labels)
@@ -40,6 +54,8 @@ LLM_META = {
     "llama2": (LlamaForCausalLM, LlamaDecoderLayer),
     "vicuna": (LlamaForCausalLM, LlamaDecoderLayer),
     "mistral": (MistralForCausalLM, MistralDecoderLayer),
+    "openlm": (OpenLMforCausalLM, Block),
+    "openvlm": (OpenLMforCausalLM, Block),
 }
 
 
@@ -107,7 +123,6 @@ class PrismaticPreTrainedModel(PreTrainedModel):
 class PrismaticForVision2Seq(PrismaticPreTrainedModel):
     def __init__(self, config: PrismaticConfig, load_pretrained_backbones: bool = False) -> None:
         super().__init__(config)
-
         # Create Trackers
         self.vision_backbone_requires_grad = False
 
@@ -123,30 +138,48 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
                 f"there might be inference-time regressions due to dependency changes. If in doubt, please"
                 f"use the above versions."
             )
-
-        # Instantiate PrismaticVisionBackbone (w/ Potential Fused Backbone)
-        self.vision_backbone = PrismaticVisionBackbone(
-            self.config.use_fused_vision_backbone,
-            self.config.timm_model_ids,
-            self.config.timm_override_act_layers,
-            self.config.image_sizes,
-            load_pretrained_backbones=load_pretrained_backbones,
-        )
-
-        # Instantiate Multimodal Projector
-        self.projector = PrismaticProjector(
-            self.config.use_fused_vision_backbone, self.vision_backbone.embed_dim, self.config.text_config.hidden_size
-        )
+            
 
         # Instantiate LLM Backbone (via HF AutoModelForCausalLM)
         self.llm_cls, self.llm_transformer_layer_cls = LLM_META[config.llm_family]
-        if not load_pretrained_backbones:
+        if config.llm_family == "openlm":
+            # Load OpenLM Configuration and Model
+            self.language_model, tokenizer = get_openlm_for_causal_lm(config.llm_backbone_id, load_pretrained_backbones)
+            # Update `language_model.config` and `self.config.text_config`
+            self.language_model.config.pad_token_id = tokenizer.pad_token_id
+            self.language_model.config.image_token_id = tokenizer.IMAGE_PATCH
+            self.language_model.config.torch_dtype = torch.bfloat16
+            self.config.text_config = self.language_model.config
+            self.config.text_config.hidden_size = self.language_model.config.params.dim
+            self.config.text_config.llm_max_length = self.language_model.config.params.seq_len
+            self.config.image_token_id = tokenizer.IMAGE_PATCH
+            self.config.pad_token_id = tokenizer.pad_token_id
+            self._load_vision_layers(load_pretrained_backbones)
+        elif config.llm_family == "openvlm":
+            # Load OpenVLM Configuration and Model
+            self.language_model, tokenizer = get_openlm_for_causal_lm(config.llm_backbone_id, load_pretrained_backbones)
+            self.language_model.config.pad_token_id = tokenizer.pad_token_id
+            self.language_model.config.image_token_id = tokenizer.IMAGE_PATCH
+            self.language_model.config.torch_dtype = torch.bfloat16
+            self.config.text_config = self.language_model.config
+            self.config.text_config.hidden_size = self.language_model.config.params.dim
+            self.config.text_config.llm_max_length = self.language_model.config.params.seq_len
+            self.config.image_token_id = tokenizer.IMAGE_PATCH
+            self.config.pad_token_id = tokenizer.pad_token_id
+            self._load_vision_layers(False)
+            if load_pretrained_backbones:
+                self.vision_backbone.load_state_dict(get_vision_state_dict(config.llm_backbone_id))
+                self.projector.load_state_dict(get_projector_state_dict(config.llm_backbone_id))
+                # Update `language_model.config` and `self.config.text_config`
+        elif not load_pretrained_backbones:
+            self._load_vision_layers(load_pretrained_backbones)
             self.language_model = AutoModelForCausalLM.from_config(
                 self.config.text_config,
                 attn_implementation=self.config._attn_implementation,
                 torch_dtype=self.config.torch_dtype,
             )
         elif config.llm_family in {"llama2", "llama2-chat", "vicuna", "mistral"}:
+            self._load_vision_layers(load_pretrained_backbones)
             # Vicuña v1.5 Default Configuration is "Broken" --> need the following to suppress `UserWarnings`
             llm_kwargs = (
                 {"do_sample": False, "temperature": 1.0, "top_p": 1.0} if self.config.llm_family in {"vicuna"} else {}
@@ -179,6 +212,21 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
 
         # HF Boilerplate =>> initializes weights via `_init_weights()` and sets gradient checkpointing
         self.post_init()
+
+    def _load_vision_layers(self, load_pretrained_backbones: bool = False) -> None:
+        # Instantiate PrismaticVisionBackbone (w/ Potential Fused Backbone)
+        self.vision_backbone = PrismaticVisionBackbone(
+            self.config.use_fused_vision_backbone,
+            self.config.timm_model_ids,
+            self.config.timm_override_act_layers,
+            self.config.image_sizes,
+            load_pretrained_backbones=load_pretrained_backbones,
+        )
+
+        # Instantiate Multimodal Projector
+        self.projector = PrismaticProjector(
+            self.config.use_fused_vision_backbone, self.vision_backbone.embed_dim, self.config.text_config.hidden_size
+        )
 
     # === General Utilities ===
     def get_vision_backbone_cfgs(self) -> List[Dict[str, Any]]:
