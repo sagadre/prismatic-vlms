@@ -162,14 +162,14 @@ class PrismaticConfig(PretrainedConfig):
             HF_LLM_BACKBONES["openlm"]["hf_hub_path"] = source
             self.llm_family = "openlm"
             self.llm_backbone_id = llm_backbone_id
-            self.llm_hf_hub_path = source
+            self.llm_hf_hub_path = llm_backbone_id
         elif llm_backbone_id.startswith("(openvlm)"):
             source = llm_backbone_id.replace("(openvlm)", "")
             overwatch.info(f"OpenVLM detected; loading OpenVLM configuration from {source}")
             HF_LLM_BACKBONES["openlm"]["hf_hub_path"] = source
             self.llm_family = "openvlm"
             self.llm_backbone_id = llm_backbone_id
-            self.llm_hf_hub_path = source
+            self.llm_hf_hub_path = llm_backbone_id
         elif llm_backbone_id not in HF_LLM_BACKBONES:
             raise ValueError(f"LLM backbone `{llm_backbone_id}` not in {HF_LLM_BACKBONES.keys()}")
         else:
@@ -184,7 +184,7 @@ class PrismaticConfig(PretrainedConfig):
 
         if text_config is None:
             if self.llm_family in ["openlm", "openvlm"]:
-                self.text_config = yaml.load(open(f"{self.llm_hf_hub_path}/params.txt", "r"), Loader=yaml.FullLoader)
+                self.text_config = yaml.load(open(f"{source}/params.txt", "r"), Loader=yaml.FullLoader)
                 self.text_config = argparse.Namespace(**self.text_config)
             else:
                 self.text_config = AutoConfig.from_pretrained(self.llm_hf_hub_path)

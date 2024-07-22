@@ -143,7 +143,7 @@ def pretrain(cfg: PretrainConfig) -> None:
         vision_backbone_id=cfg.model.vision_backbone_id,
         llm_backbone_id=cfg.model.llm_backbone_id,
         llm_max_length=cfg.model.llm_max_length,
-        attn_implementation="flash_attention_2",
+        # attn_implementation="flash_attention_2",
     )
 
     # Instantiate VLM =>> automatically loads pretrained weights for `vision_backbone` and `language_model`

@@ -146,3 +146,12 @@ dmypy.json
 
 # Caches
 cache/
+
+# Data
+data/
+llm_checkpoints/
+
+# Logs
+logs/
+runs/
+results/
