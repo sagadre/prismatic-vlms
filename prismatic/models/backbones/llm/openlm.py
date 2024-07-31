@@ -151,6 +151,7 @@ def get_openlm_for_causal_lm(llm_backbone_id: str, load_weights: bool = True) ->
     open_lm_args.distributed = True
     open_lm_args.ffn_type = "swiglu_torch"
     open_lm_args.attn_name = "torch_attn"
+    open_lm_args.torchcompile = False
     llm = OpenLMforCausalLM(OpenLMConfig(create_params(open_lm_args)))
 
     # Initialize LLM
