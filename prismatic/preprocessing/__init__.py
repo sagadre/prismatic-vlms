@@ -1,1 +1,1 @@
-from .materialize import get_prismatic_processor, get_prompt_builder_fn
+from .materialize import get_prismatic_processor, get_prompt_builder_fn, get_image_processor

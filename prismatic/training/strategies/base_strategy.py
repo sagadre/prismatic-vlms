@@ -49,6 +49,8 @@ class TrainingStrategy(ABC):
         reduce_in_full_precision: bool = False,
         mixed_precision_dtype: torch.dtype = torch.bfloat16,
         worker_init_fn: Optional[Callable[[int], None]] = None,
+        adam_beta1: float = 0.9,
+        adam_beta2: float = 0.999,
         **_: str,
     ) -> None:
         self.vlm, self.device_id = vlm, device_id
@@ -63,6 +65,7 @@ class TrainingStrategy(ABC):
 
         self.learning_rate, self.weight_decay, self.max_grad_norm = learning_rate, weight_decay, max_grad_norm
         self.lr_scheduler_type, self.warmup_ratio = lr_scheduler_type, warmup_ratio
+        self.adam_beta1, self.adam_beta2 = adam_beta1, adam_beta2
 
         # Generic Strategy Parameters
         self.enable_gradient_checkpointing = enable_gradient_checkpointing
@@ -112,6 +115,7 @@ class TrainingStrategy(ABC):
         stage: str = "finetune",
         batch_construction_strategy: str = "split-modality",
         seed: int = 7,
+        save_only_trainable: bool = True,
     ) -> None:
         """Run the training loop for the given `dataset` and `collator`; log losses, results to `metrics`"""
         if "finetune" in stage and batch_construction_strategy == "split-modality":
@@ -226,7 +230,7 @@ class TrainingStrategy(ABC):
 
                         # Check for Termination & Save Final Checkpoint (in case `max_steps` is not None)
                         if self.max_steps is not None and metrics.global_step >= self.max_steps:
-                            self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item())
+                            self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item(), save_only_trainable)
                             dist.barrier()
 
                             return
@@ -237,5 +241,5 @@ class TrainingStrategy(ABC):
 
             # Save checkpoint at end each epoch (if `self.max_steps` is None)
             if self.max_steps is None:
-                self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item())
+                self.save_checkpoint(metrics.run_dir, metrics.global_step, epoch, loss.item(), save_only_trainable)
                 dist.barrier()

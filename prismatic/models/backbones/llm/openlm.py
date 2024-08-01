@@ -241,32 +241,3 @@ def get_projector_state_dict(llm_backbone_id: str) -> dict:
         remapped_state_dict[PROJECTOR_KEY_MAPPING[key]] = value
     return remapped_state_dict
 
-
-class StrangeInputLogger:
-    def __init__(self, output_path="strange_input", beta=0.9, rtol=0.5):
-        self.mean_loss = 0
-        self.beta = beta
-        self.rtol = rtol
-        self.output_path = output_path
-        self.counter = 0
-
-        dist.initialize_dist(get_device(None))
-        self.is_master = dist.get_global_rank() == 0
-
-    def log(self, loss, input, **kwargs):
-        self.counter += 1
-        if self.mean_loss == 0:
-            self.mean_loss = loss
-        else:
-            self.mean_loss = self.beta * self.mean_loss + (1 - self.beta) * loss
-        if abs(loss - self.mean_loss) / self.mean_loss > self.rtol:
-            self.write(input, loss, log_count=self.counter, **kwargs)
-
-    def write(self, input, loss, **kwargs):
-        if self.is_master:
-            with open(self.output_path, "a") as f:
-                torch.set_printoptions(threshold=sys.maxsize)  # Set print options to display the entire tensor
-                f.write(f"Input: {input}\n")
-                f.write(f"Loss: {loss}\n")
-                for k, v in kwargs.items():
-                    f.write(f"{k}: {v}\n")

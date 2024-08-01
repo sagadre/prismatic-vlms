@@ -139,7 +139,6 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
                 f"use the above versions."
             )
             
-
         # Instantiate LLM Backbone (via HF AutoModelForCausalLM)
         self.llm_cls, self.llm_transformer_layer_cls = LLM_META[config.llm_family]
         if config.llm_family == "openlm":
@@ -227,6 +226,31 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         self.projector = PrismaticProjector(
             self.config.use_fused_vision_backbone, self.vision_backbone.embed_dim, self.config.text_config.hidden_size
         )
+
+    @classmethod
+    def from_run_dir(cls, run_dir: str, load_pretrained_backbones: bool = False, map_location: str = "cpu") -> "PrismaticForVision2Seq":
+        # Load Configuration from Run Directory
+        config = PrismaticConfig.from_run_dir(run_dir)
+
+        # Instantiate Model from Configuration
+        model = cls(config, load_pretrained_backbones=False)
+        if load_pretrained_backbones:
+            model.load_weights(run_dir / "checkpoints" / "latest-checkpoint.pt", map_location=map_location)
+
+        return model
+
+    def load_weights(self, path: str, map_location: str = "cpu") -> None:
+        """Load Prismatic VLM weights from a given directory path."""
+        # Load Prismatic VLM Weights
+        state_dict = torch.load(path, map_location=map_location)["model"]
+        assert "projector" in state_dict, "Unexpected state_dict; missing `projector` key!"
+        assert "language_model" in state_dict, "Unexpected state_dict; missing `language_model` key!"
+        if "vision_backbone" in state_dict: 
+            self.load_state_dict(state_dict)
+        else:
+            self._load_vision_layers(True)
+            self.projector.load_state_dict(state_dict["projector"])
+            self.language_model.load_state_dict(state_dict["language_model"])
 
     # === General Utilities ===
     def get_vision_backbone_cfgs(self) -> List[Dict[str, Any]]:
@@ -491,6 +515,8 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         # Recompute `position_ids` (only necessary for generation / left padding)!
         if is_left_padding or position_ids is not None:
             position_ids = (fused_attention_mask.cumsum(dim=-1) - 1).masked_fill_(fused_attention_mask == 0, 1)
+            if (position_ids == torch.arange(0, position_ids.shape[1], device=position_ids.device).unsqueeze(0)).all():
+                position_ids = None
 
         # Run LLM `forward()`
         return self.language_model(

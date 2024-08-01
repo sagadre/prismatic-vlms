@@ -72,7 +72,7 @@ def generate(cfg: GenerateConfig) -> None:
 
     # Initial Setup
     image = Image.open(requests.get(DEFAULT_IMAGE_URL, stream=True).raw).convert("RGB")
-    prompt_builder_fn = get_prompt_builder_fn(vlm.config.llm_backbone_id)
+    prompt_builder_fn = get_prompt_builder_fn(vlm.config.llm_family)
 
     # === Verify Batched Generation ===
     if cfg.debug:

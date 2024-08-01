@@ -20,25 +20,26 @@ from prismatic.preprocessing.prompting import (
     OpenlmPromptBuilder
 )
 from prismatic.models.backbones.llm.openlm import CustomTokenizer
+from functools import partial
 
 
-def get_prompt_builder_fn(llm_backbone_id: str) -> Type[PromptBuilder]:
-    if llm_backbone_id.endswith("-pure"):
-        return PurePromptBuilder
+def get_prompt_builder_fn(llm_family: str, system_prompt: str = None) -> Type[PromptBuilder]:
+    if llm_family.endswith("pure"):
+        return partial(PurePromptBuilder, model_family=llm_family, system_prompt=system_prompt)
 
-    elif llm_backbone_id.startswith("llama2-") and llm_backbone_id.endswith("-chat"):
-        return Llama2ChatPromptBuilder
+    elif llm_family.startswith("llama2") and llm_family.endswith("-chat"):
+        return partial(Llama2ChatPromptBuilder, model_family=llm_family, system_prompt=system_prompt)
 
-    elif llm_backbone_id.startswith("vicuna"):
-        return VicunaV15ChatPromptBuilder
+    elif llm_family.startswith("vicuna"):
+        return partial(VicunaV15ChatPromptBuilder, model_family=llm_family, system_prompt=system_prompt)
 
-    elif llm_backbone_id.startswith("mistral-") and llm_backbone_id.endswith("-instruct"):
-        return MistralInstructPromptBuilder
+    elif llm_family.startswith("mistral") and llm_family.endswith("-instruct"):
+        return partial(MistralInstructPromptBuilder, model_family=llm_family, system_prompt=system_prompt)
     
-    elif llm_backbone_id.startswith("(openlm)") or llm_backbone_id.startswith("(openvlm)"):
-        return OpenlmPromptBuilder
+    elif llm_family.startswith("openlm") or llm_family.startswith("openvlm"):
+        return partial(OpenlmPromptBuilder, model_family=llm_family, system_prompt=system_prompt)
 
-    raise ValueError(f"No PromptBuilder defined for LLM Backbone `{llm_backbone_id}`")
+    raise ValueError(f"No PromptBuilder defined for LLM Backbone `{llm_family}`")
 
 
 def get_image_processor(

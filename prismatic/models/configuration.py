@@ -5,6 +5,7 @@ Standalone classes for fully-specifying a Prismatic VLM configuration (derived f
 Defines full set of "registries" for various supported vision backbones and LLM backbones.
 """
 
+from os import PathLike
 from typing import Any, Dict, Optional
 
 from transformers import CONFIG_MAPPING, AutoConfig, PretrainedConfig
@@ -12,6 +13,7 @@ from transformers import CONFIG_MAPPING, AutoConfig, PretrainedConfig
 from prismatic.overwatch import initialize_overwatch
 import yaml
 import argparse
+import fsspec
 
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
@@ -197,3 +199,19 @@ class PrismaticConfig(PretrainedConfig):
 
         # Dispatch **kwargs to super() =>> note that `pad_token_id` collides, so we pass it in here as well...
         super().__init__(pad_token_id=self.pad_token_id, **kwargs)
+
+    @classmethod
+    def from_run_dir(cls, run_path: PathLike, **kwargs) -> "PrismaticConfig":
+        # Load Configuration from Run Path
+        original_run_config = yaml.load(open(run_path / "pretrain-config.yaml", "r"), Loader=yaml.FullLoader)
+
+        vision_backbone_id = original_run_config["model"]["vision_backbone_id"]
+        llm_backbone_id = original_run_config["model"]["llm_backbone_id"]
+        llm_max_length = original_run_config["model"]["llm_max_length"]
+       
+        return cls(
+            vision_backbone_id=vision_backbone_id,
+            llm_backbone_id=llm_backbone_id,
+            llm_max_length=llm_max_length,
+            **kwargs,
+        )
