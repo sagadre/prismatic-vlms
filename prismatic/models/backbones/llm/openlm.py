@@ -56,7 +56,7 @@ class CustomTokenizer(GPTNeoXTokenizerFast):
     This class handles special tokens at special indices for OpenLM models.
     This is mainly a hack
     """
-    SPECIAL_STRS = ["<|img_patch|>", "<|a|>", "<|/a|>", "<|h|>", "<|/h|>"]
+    SPECIAL_STRS = ["<image>", "<|a|>", "<|/a|>", "<|h|>", "<|/h|>"]
     SPECIAL_TOKENS = [50277, 50278, 50279, 50280, 50281]
     HUMAN_STOP = 50281
     HUMAN_START = 50280
@@ -75,23 +75,6 @@ class CustomTokenizer(GPTNeoXTokenizerFast):
         self.pad_token_id = self.eos_token_id
         print("Tokenizer initialized")
 
-    def tokenize(self, text: str, **kwargs):
-        text = text.replace("<image>", "<|img_patch|> ")
-        tokens = super().tokenize(text, **kwargs)
-        return tokens
-    
-    def decode(self, token_ids: ndarray, **kwargs):
-        text = super().decode(token_ids, **kwargs)
-        text = text.replace("<|img_patch|>", "<image>")
-        return text
-    
-    def __call__(self, text: str, **kwargs):
-        if isinstance(text, list):
-            text = [t.replace("<image>", "<|img_patch|> ") for t in text]
-        else:
-            text = text.replace("<image>", "<|img_patch|> ")
-        encoded = super().__call__(text, **kwargs)
-        return encoded
 
 def convert_openlm_state_dict(model, state_dict, strict: bool = True, assign: bool = False):
     if "state_dict" in state_dict:
