@@ -125,6 +125,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         super().__init__(config)
         # Create Trackers
         self.vision_backbone_requires_grad = False
+        self.fused_first = False
 
         # Set Module Keys =>> used in Checkpoint Saving / Model Loading
         self.all_module_keys = ["vision_backbone", "projector", "language_model"]
@@ -153,6 +154,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
             self.config.text_config.llm_max_length = self.language_model.config.params.seq_len
             self.config.image_token_id = tokenizer.IMAGE_PATCH
             self.config.pad_token_id = tokenizer.pad_token_id
+            self.fused_first = True
             self._load_vision_layers(load_pretrained_backbones)
         elif config.llm_family == "openvlm":
             # Load OpenVLM Configuration and Model
@@ -165,6 +167,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
             self.config.text_config.llm_max_length = self.language_model.config.params.seq_len
             self.config.image_token_id = tokenizer.IMAGE_PATCH
             self.config.pad_token_id = tokenizer.pad_token_id
+            self.fused_first = True
             self._load_vision_layers(False)
             if load_pretrained_backbones:
                 self.vision_backbone.load_state_dict(get_vision_state_dict(config.llm_backbone_id))
@@ -220,6 +223,7 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
             self.config.timm_override_act_layers,
             self.config.image_sizes,
             load_pretrained_backbones=load_pretrained_backbones,
+            fused_first= self.fused_first
         )
 
         # Instantiate Multimodal Projector
@@ -410,6 +414,9 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         # [CONTRACT] `input_embeds` should always be None (we don't support custom handling)
         assert inputs_embeds is None, f"Unexpected `{inputs_embeds = }`"
 
+        if self.config.llm_family in ["openlm", "openvlm"]:
+            position_ids = None
+
         # Handle Inference (leverage cache, short-circuit on just LLM `forward()`)
         if input_ids.shape[1] == 1 and past_key_values is not None:
             # Attention Mask and Position IDs do *not* currently reflect the `num_patches` tokens we spliced in; fix!
@@ -420,7 +427,8 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
             extended_attention_mask[torch.where(attention_mask == 0)] = 0
 
             # Update Position IDs w/ "extended" length
-            position_ids = torch.sum(extended_attention_mask, dim=1).unsqueeze(-1) - 1
+            if self.config.llm_family not in ["openlm", "openvlm"]:
+                position_ids = torch.sum(extended_attention_mask, dim=1).unsqueeze(-1) - 1
 
             # We're leveraging the cache, so just redirect to `self.llm_backbone` with `input_ids` and `past_key_values`
             return self.language_model(
@@ -543,6 +551,18 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         use_cache: Optional[bool] = None,
         **kwargs: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
+
+        if self.config.llm_family in ["openlm", "openvlm"]:
+            return self.language_model.prepare_inputs_for_generation(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                pixel_values=pixel_values,
+                inputs_embeds=inputs_embeds,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                **kwargs,
+            )
+
         if past_key_values is not None:
             if not isinstance(past_key_values, tuple):
                 raise ValueError(f"Unexpected type for past_key_values: {type(past_key_values)} - expected tuple!")

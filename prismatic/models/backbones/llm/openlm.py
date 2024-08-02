@@ -41,7 +41,7 @@ try:
     from open_lm.params import add_model_args
     from transformers import GPTNeoXTokenizerFast
 except ImportError:
-    overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git`")
+    overwatch.info("open_lm not installed. Install with `pip install git+https://github.com/mlfoundations/open_lm.git@prismatic_openlm`")
 
 
 # fmt: off
@@ -68,12 +68,10 @@ class CustomTokenizer(GPTNeoXTokenizerFast):
         self.replaced_to_encoded = {}
         self._name_to_replaced = {}
         super().__init__(*args, **kwargs)
-        print("Adding special tokens")
         special_tokens_dict = {"additional_special_tokens": self.SPECIAL_STRS}
         self.add_special_tokens(special_tokens_dict)
         assert [e[0] for e in self(self.SPECIAL_STRS)["input_ids"]] == self.SPECIAL_TOKENS
         self.pad_token_id = self.eos_token_id
-        print("Tokenizer initialized")
 
 
 def convert_openlm_state_dict(model, state_dict, strict: bool = True, assign: bool = False):

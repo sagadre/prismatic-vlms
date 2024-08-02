@@ -50,11 +50,13 @@ class PrismaticVisionBackbone(nn.Module):
         timm_override_act_layers: List[Optional[str]],
         image_sizes: List[int],
         load_pretrained_backbones: bool = False,
+        fused_first: bool = False,
     ) -> None:
         super().__init__()
         self.use_fused_vision_backbone = use_fused_vision_backbone
         self.image_sizes = image_sizes
         self.default_dtype = torch.bfloat16
+        self.fused_first = fused_first
 
         # [Validation] Lightweight Validate on TIMM Dependency Version
         if timm.__version__ not in {"0.9.10", "0.9.11", "0.9.12", "0.9.16"}:
@@ -119,7 +121,10 @@ class PrismaticVisionBackbone(nn.Module):
         img, img_fused = torch.split(pixel_values, [3, 3], dim=1)
         patches, patches_fused = self.featurizer(img), self.fused_featurizer(img_fused)
 
-        return torch.cat([patches, patches_fused], dim=2)
+        if self.fused_first:
+            return torch.cat([patches_fused, patches], dim=2)
+        else:
+            return torch.cat([patches, patches_fused], dim=2)
 
     @property
     def default_image_resolution(self) -> Tuple[int, int, int]:
