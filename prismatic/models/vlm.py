@@ -551,7 +551,6 @@ class PrismaticForVision2Seq(PrismaticPreTrainedModel):
         use_cache: Optional[bool] = None,
         **kwargs: torch.Tensor,
     ) -> Dict[str, torch.Tensor]:
-        
 
         if self.config.llm_family in ["openlm", "openvlm"]:
             model_inputs = self.language_model.prepare_inputs_for_generation(
